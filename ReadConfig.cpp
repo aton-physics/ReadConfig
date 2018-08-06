@@ -2,60 +2,9 @@
 #include <fstream>
 #include <vector>
 #include <string>
-#include <iterator> // for istream_iterator
-
-// I want to make a class of Points to store positions as a vector of Points. 
-
-class Point {
-private: 
-	double xval, yval;
-public:  // Constructor uses default arguments to allow calling with zero, one,
-        // or two values.
-	Point(double x = 0.0, double y = 0.0) {
-		xval = x;
-		yval = y;
-	}
-
-	// Extractors.
-	double x() { return xval; }
-	double y() { return yval; }
-
-	// Distance to another point.  Pythagorean thm.
-	double dist(Point other) {
-		double xd = xval - other.xval;
-		double yd = yval - other.yval;
-		return sqrt(xd*xd + yd*yd);
-	}
-
-	// Add or subtract two points.
-	Point add(Point b)
-	{
-		return Point(xval + b.xval, yval + b.yval);
-	}
-	Point sub(Point b)
-	{
-		return Point(xval - b.xval, yval - b.yval);
-	}
-	Point mult(double scalar) 
-	{
-		return Point(xval * scalar, yval * scalar);
-	}
-	// dot product
-	double dot(Point b)
-	{
-		return xval * b.xval + yval * b.yval;
-	}
-	// apply Periodic Boundary Conditions - To print configurations in a sensible way, print the configurations with .pbc(). To calculate pair separations, use .sub().pbc()
-	Point pbc(const double &boxl, const double &boxinv) {
-		return Point(xval - static_cast<int>(xval * boxinv + ((xval >= 0.0) ? 0.5 : -0.5)) * boxl, yval - static_cast<int>(yval * boxinv + ((yval >= 0.0) ? 0.5 : -0.5)) * boxl);
-	}
-	// Print the point on the stream.  The class ostream is a base class
-	// for output streams of various types.
-	void print(std::ostream &strm)
-	{
-		strm << xval << ' ' << yval << '\n';
-	}
-};
+#include <assert.h>
+#include <iterator> // istream_iterator
+#include "Point.h"
 
 const double density = 0.25;		//these numbers should be passed to the file as a shell variable or I can have this c++ file dig through the directory to find the input file directly
 const double temperature = 0.50;
@@ -64,22 +13,18 @@ const int NA = 3;
 const double boxl = sqrt(N / density);
 const double boxinv = 1.0 / boxl;
 
-
 double CalculateS(double NormalizationSq, std::vector<std::vector<std::vector<Point>>> &PositionVector, const int N, int configuration_number);
-void PrintHistogram(std::string filename, const int bin_count, const double bin_width, const int NumConfigurations, double density, double temperature, std::vector<double> data);
+void PrintHistogram(std::string filename, const int bin_count, const double bin_width, const int NumConfigurations, double density, double temperature, std::vector<double> &data);
 void radial_df(std::vector<std::vector<std::vector<Point>>> &PositionVector, const int bin_count, const double bin_width, const int N, int configuration_number, std::vector<double> &rdf);	
+void NearestNeighbors(const int N, int NumberOfConfigurations, double NeighborCutOffSq, std::vector<std::vector<std::vector<Point>>> &PositionVector, std::vector<int> &NeighborVector);
 
 int main() {
-	//const int N = 200;
-	//const int NumConfigs = 2*100000;
-	const int NumConfigs = 2*100000;
-	std::ifstream ifs("Trajectory31.data");
-	//below is a nice one line solution for reading a file into a vector. But doesn't allow me control over how much of the file. Easy fix? Can I bind the size of that vector? TODO. Easier to just $head -n $maxmolecules $filename > $newfilename
-	std::cout << "before parse \n";
+	const int NumConfigs = 10000;
+	std::ifstream ifs("input31.data");
 	std::vector<double> parsed(std::istream_iterator<double>(ifs), {}); // initialize vector using the istream
 	std::cout << "just parsed" << '\n';
-	std::cout << parsed.size() << '\n';
 	std::vector<std::vector<std::vector<Point>>> Positions(NumConfigs, std::vector<std::vector<Point>>(N, std::vector<Point>(NA, (0.0,0.0))));	//Now have positions[:,:,:] config:molecule:atom
+	std::cout << parsed.size() << '\n';
 	int k = 0;
 	for (int n = 0; n < NumConfigs; n++) { // fill out Positions with the input file 
 		for (int i = 0; i < N; i++) {
@@ -90,20 +35,27 @@ int main() {
 			}
 		}
 	}
-	std::cout << "Just assigned Positions \n";
 	//do P(s), g(r), etc on a configuration-by-configuration basis.
 	double OrientationMagnitude = pow(Positions[0][0][2].dist(Positions[0][0][1]),2); //pbc doesn't affect orientations, don't need it here. Just be consistent - no need to worry about out of place particles since uncorrected positions don't include images.
 	double OrderBinWidth = 0.005, GrBinWidth = 0.01;
 	int TotalOrderBins = 1.0 / OrderBinWidth, TotalGrBins = boxl / 2 / GrBinWidth;
 	std::cout << "calculating P(s) \n";
-	std::vector<double> OrderParameter(TotalOrderBins), PairCorrelation(TotalGrBins);
-	for (int n = 0; n < NumConfigs; n++) {
+	std::vector<double> OrderParameter(TotalOrderBins), PairCorrelation(TotalGrBins);	// vector constructed with a size implies doubles are initialized to 0
+	std::vector<int> NumberNeighbors(10);
+	std::vector<std::vector<Point>> OmegaJ(NumConfigs, std::vector<Point>(N, (0.0,0.0)));
+	double NeighborCutOffSq = 1.61 * 1.61;
+	for (int n = 0; n < NumConfigs; n++) {	//Takes a long time to read these configurations. This computation part is relatively small, so might as well calculate everything at once. 
 		int bin = CalculateS(OrientationMagnitude, Positions, N, n) / OrderBinWidth;
-		OrderParameter[bin] += 1;	//a vector of doubles is initialized to 0.0 automatically
+		OrderParameter[bin] += 1;
 		radial_df(Positions, TotalGrBins, GrBinWidth, N, n, PairCorrelation);
+		NearestNeighbors(N, n, NeighborCutOffSq, Positions, NumberNeighbors);
 	}
-	PrintHistogram("OrderParameter/OrderParameter31.data", TotalOrderBins, OrderBinWidth, NumConfigs, density, temperature, OrderParameter);
-	PrintHistogram("PairCorrelation/PairCorrelation31.data", TotalGrBins, GrBinWidth, NumConfigs, density, temperature, PairCorrelation);
+	PrintHistogram("OrderParameter/OrderParameter1.data", TotalOrderBins, OrderBinWidth, NumConfigs, density, temperature, OrderParameter);
+	PrintHistogram("PairCorrelation/PairCorrelation1.data", TotalGrBins, GrBinWidth, NumConfigs, density, temperature, PairCorrelation);
+	std::ofstream neighborfile("Neighbors/Neighbors1.data");
+	for (std::vector<int>::size_type i = 0; i < NumberNeighbors.size(); i++) {
+		neighborfile << i << "\t" << NumberNeighbors[i] / double(N* NA) / NumConfigs << '\n';
+	}
 }
 
 double CalculateS(double NormalizationSq, std::vector<std::vector<std::vector<Point>>> &PositionVector, const int N, int configuration_number) {	//take a configuration and calculate the "orientational order parameter" see Zhou, Stratt 2018
@@ -122,9 +74,8 @@ double CalculateS(double NormalizationSq, std::vector<std::vector<std::vector<Po
 	return s;
 }
 
-void PrintHistogram(std::string filename, const int bin_count, const double bin_width, const int NumConfigurations, double density, double temperature, std::vector<double> data) {
+void PrintHistogram(std::string filename, const int bin_count, const double bin_width, const int NumConfigurations, double density, double temperature, std::vector<double> &data) {
 	std::ofstream ofs(filename);
-	std::cout << "hello there";
 	ofs << density << '\t' << temperature << '\n';
 	for (int bin = 0; bin < bin_count; bin++) {
 		double binvalue = double(bin) * bin_width;	// when the value is calculated (elsewhere), it is counted into the bin associated with the value after truncation. So this prints the bin's count as well as the bin's value.
@@ -157,5 +108,24 @@ void radial_df(std::vector<std::vector<std::vector<Point>>> &PositionVector, con
 		rupper = rlower + bin_width;
 		nideal = constant * (rupper * rupper - rlower * rlower);
 		rdf[bin] += double(hist[bin]) / double(N * NA) / nideal;
+	}
+}
+
+void NearestNeighbors(const int N, int ConfigurationNumber, double NeighborCutOffSq, std::vector<std::vector<std::vector<Point>>> &PositionVector, std::vector<int> &NeighborVector) {
+	for (int j = 0; j < N; j++) {				// loop over all distinct molecule pairs j,k - could presumably do j,k with k > j but I'm not sure of a neat way to count neighbors without going over every index individually, can't double count like we do in g(r).
+		for (int a = 0; a < NA; a++) {
+			int counter = 0;					// reset counter when examining new reference particle
+			for (int k = 0; k < N; k++) {
+				if (j == k) continue;			// skip neighbor check if loop is over the same molecule twice <=> make sure molecules are distinct
+				for (int b = 0; b < NA; b++) {
+					Point r_jakb = PositionVector[ConfigurationNumber][j][a].sub(PositionVector[ConfigurationNumber][k][b]).pbc(boxl, boxinv);
+					if (r_jakb.dot(r_jakb) <= NeighborCutOffSq) {	// check if close enough to be a neighbor
+						counter += 1;
+					}
+				}
+			}
+			assert(counter <= 10);
+			NeighborVector[counter] += 1; // If InRange, then register another near neighbor. 
+		}
 	}
 }
