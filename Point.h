@@ -16,13 +16,18 @@ public:  // Constructor uses default arguments to allow calling with zero, one,
 	double x() { return xval; }
 	double y() { return yval; }
 
-	// Distance to another point.  Pythagorean thm.
+	// Distance to another point. 
 	double dist(Point other) {
 		double xd = xval - other.xval;
 		double yd = yval - other.yval;
 		return sqrt(xd*xd + yd*yd);
 	}
-
+	// Squared distance to another point
+	double dist_sq(Point other) {
+		double xd = xval - other.xval;
+		double yd = yval - other.yval;
+		return xd*xd + yd*yd;
+	}
 	// Add or subtract two points.
 	Point add(Point b)
 	{
