@@ -29,13 +29,29 @@ public:  // Constructor uses default arguments to allow calling with zero, one,
 		return xd*xd + yd*yd;
 	}
 	// Add or subtract two points.
-	Point add(Point b)
+	Point& operator-=(const Point& that)
 	{
-		return Point(xval + b.xval, yval + b.yval);
+		xval -= that.xval;
+		yval -= that.yval;
+		return *this;
 	}
-	Point sub(Point b)
+	Point& operator+=(const Point& that)
 	{
-		return Point(xval - b.xval, yval - b.yval);
+		xval += that.xval;
+		yval += that.yval;
+		return *this;
+	}
+	Point& operator*(double scalar)
+	{
+		xval *= scalar;
+		yval *= scalar;
+		return *this;
+	}
+	Point& operator/(double scalar)
+	{
+		xval /= scalar;
+		yval /= scalar;
+		return *this;
 	}
 	Point mult(double scalar)
 	{
@@ -55,5 +71,40 @@ public:  // Constructor uses default arguments to allow calling with zero, one,
 	void print(std::ostream &strm)
 	{
 		strm << xval << ' ' << yval << '\n';
+	}
+};
+
+Point operator-(Point first, const Point& second)
+{
+	return first -= second;
+}
+
+Point operator+(Point first, const Point& second)
+{
+	return first += second;
+}
+
+struct SimulationParameters {
+	double density, temperature, boxl, invboxl, timestep;
+	int steps_between_cfgs = 10, num_cfgs, N, NA;
+	SimulationParameters (double d, double tem, double length_box, double invlength_box, double ts, int numbercfg, int numbermolecules, int numberatoms)
+	{
+		density = d;
+		temperature = tem;
+		boxl = length_box;
+		invboxl = invlength_box;
+		timestep = ts;
+		num_cfgs = numbercfg;
+		N = numbermolecules;
+		NA = numberatoms;
+	}
+};
+
+struct HistogramInfo {
+	double bin_width;
+	int num_bins;
+	HistogramInfo(double d, int n) {
+		bin_width = d;
+		num_bins = n;
 	}
 };
