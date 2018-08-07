@@ -74,16 +74,20 @@ void get_regression(std::string inputfilename, std::string outputfilename, const
 void numerical_differentiation(std::string inputfilename, std::string outputfilename, double stepsize) {	//important: stepsize is however long the time is between f[i] and f[i+1]
 	std::ifstream input_file(inputfilename);
 	std::string dummyLine;
-	getline(input_file, dummyLine);	// throw away header
 	getline(input_file, dummyLine); // throw away zeroes (zero time, zero displacement)
+	std::vector<double> parsed(std::istream_iterator<double>(input_file), {});
 	std::vector<Point> msdvector;
-	int counter = 0;
-	double x, y;
-	while (input_file >> x >> y) {	//read, store all the ordered pairs
+	for (int i = 0; i < int(parsed.size()); i += 2) {
+		msdvector.push_back((parsed[i], parsed[i + 1]));
+	}
+	int counter = int(msdvector.size());
+	//double x, y;
+	/*while (input_file >> x >> y) {	//read, store all the ordered pairs
 		Point point(x, y);
 		msdvector.push_back(point);
 		counter += 1;
-	}
+	}*/
+	std::cout << "counter is at " << counter << '\n';
 	std::ofstream regressionstream(outputfilename);
 	double derivative = 0.0;
 	for (int i = 2; i < counter - 2; i++) {
