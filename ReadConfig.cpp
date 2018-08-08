@@ -26,7 +26,7 @@ void PrintNeighbors(SimulationParameters &model, std::string filename, std::vect
 void PrintMicroscopy(SimulationParameters &model, std::string filename, std::vector<std::vector<std::vector<Point>>> &PositionVector, int num_frames);
 
 int main() {
-	std::string tag = "1";
+	std::string tag = "5";
 	SimulationParameters model = GetParams("dummystring");
 	std::vector<std::string> AllOutputFiles = { "OrientCorrelation/OrientCorrelation" + tag + ".data", "msd/msd" + tag + ".data", "Diffusion/Diffusion" + tag + ".data",
 		"FunctionsOfTemperature/Tau_orient/Tau" + tag + ".data", "OrderParameter/OrderParameter" + tag + ".data", "PairCorrelation/PairCorrelation" + tag + ".data",
@@ -34,7 +34,8 @@ int main() {
 	PrintHeaders(model, AllOutputFiles); // give all the output files density and temperature headers. does not include the derivative file.
 	std::vector<std::vector<std::vector<Point>>> Positions = ParseTrajectoryFile(model, "Trajectory/Trajectory31.data"); // read Trajectory file, write to Positions[:,:,:] configuration:molecule:atom
 	HistogramInfo HistOrderParameter(0.005, int(1 / 0.005)), HistRDF(0.01, int(model.boxl / 2 / 0.01));
-	int t_cor = int(50 / model.timestep / model.steps_between_cfgs); // correlation function is measured for this long (in units of model.timestep* #skipped configurations)
+	int t_cor = int(500 / model.timestep / model.steps_between_cfgs); // correlation function is measured for this long (in units of model.timestep* #skipped configurations)
+	assert(model.num_cfgs >= t_cor); //make sure there at least as many configurations as correlation steps
 	std::vector<double> OrderParameter(HistOrderParameter.num_bins), PairCorrelation(HistRDF.num_bins), OrientCorrelation(t_cor), MeanSqDisplacement(t_cor);
 	std::vector<int> NumberNeighbors(10);
 	std::vector<std::vector<Point>> OmegaJ(model.num_cfgs, std::vector<Point>(model.N)), Cm_J(model.num_cfgs, std::vector<Point>(model.N));
@@ -76,7 +77,7 @@ int main() {
 	}
 	numerical_differentiation("msd/msd" + tag + ".data", "derivative/derivative" + tag + ".data", model.steps_between_cfgs*model.timestep); // derivative/derivative is a temporary solution to see how long I should wait before taking the zero slope regression line
 	//best way to do this is to not print anything but diffusion (maybe msd). send msd to numerical_diff to zero_slope > diffusion.data, don't ever want to look at derivative
-	zero_slope_regression("derivative/derivative" + tag + ".data", "FunctionsOfTemperature/Diffusion_trans/Diffusion" + tag + ".data", model.temperature, 10.0);	// skip 100 tau before taking the derivative
+	zero_slope_regression("derivative/derivative" + tag + ".data", "FunctionsOfTemperature/Diffusion_trans/Diffusion" + tag + ".data", model.temperature, 10.0);	// skip 10 tau before taking the regression
 	FindRelaxationTime(model, "FunctionsOfTemperature/Tau_orient/Tau" + tag + ".data", OrientCorrelation);
 	PrintHistogram(model, HistOrderParameter, "OrderParameter/OrderParameter" + tag + ".data", OrderParameter, "prob_density");
 	PrintHistogram(model, HistRDF, "PairCorrelation/PairCorrelation" + tag + ".data", PairCorrelation, "histogram");
@@ -87,8 +88,8 @@ int main() {
 
 SimulationParameters GetParams(std::string inputfile) { //read in parameter file, assign all the parameters.
 	double density = 0.25, temperature = 0.5, ts = 0.001;
-	int num_mol = 200, num_atom = 3, numcfg = 10000;
-	double boxl = sqrt(double(num_mol) / density);
+	int num_mol = 200, num_atom = 3, numcfg = 2*100000;
+	double boxl = sqrt(num_mol / density);
 	double boxinv = 1.0 / boxl;
 	SimulationParameters model(density, temperature, boxl, boxinv, ts, numcfg, num_mol, num_atom);
 	return model;
@@ -120,8 +121,8 @@ void PrintHistogram(SimulationParameters &model, HistogramInfo &hist, std::strin
 	std::ofstream ofs(filename, std::ios_base::app);
 	for (int bin = 0; bin < hist.num_bins; bin++) {
 		double binvalue = double(bin) * hist.bin_width;	// when the value is calculated (elsewhere), it is counted into the bin associated with the value after truncation. So this prints the bin's count as well as the bin's value.
-		if (mode == "histogram") ofs << binvalue << '\t' << data[bin] / double(model.num_cfgs) << '\n';
-		else if (mode == "prob_density") ofs << binvalue << '\t' << data[bin] / double(model.num_cfgs) / hist.bin_width << '\n'; // if optional parameter is specified and greater than 1, divide bin count by bin width. This turns a histogram into a probability density
+		if (mode == "histogram") ofs << binvalue << '\t' << data[bin] / model.num_cfgs << '\n';
+		else if (mode == "prob_density") ofs << binvalue << '\t' << data[bin] / model.num_cfgs / hist.bin_width << '\n'; // if optional parameter is specified and greater than 1, divide bin count by bin width. This turns a histogram into a probability density
 		else std::cout << "Bad parameter for PrintHistogram()";
 	}
 }
@@ -147,10 +148,10 @@ void radial_df(SimulationParameters &model, std::vector<std::vector<std::vector<
 		}
 	}
 	for (bin = 0; bin < hist.num_bins; bin++) {
-		rlower = double(bin) * hist.bin_width;
+		rlower = bin * hist.bin_width;
 		rupper = rlower + hist.bin_width;
 		nideal = constant * (rupper * rupper - rlower * rlower);
-		rdf[bin] += double(histo[bin]) / double(model.N * model.NA) / nideal;
+		rdf[bin] += double(histo[bin]) / (model.N * model.NA) / nideal;
 	}
 }
 
@@ -198,10 +199,10 @@ void PrintHeaders(SimulationParameters &model, std::vector<std::string> &stringv
 }
 
 void FindRelaxationTime(SimulationParameters &model, std::string filename, std::vector<double> &OrientCorrelation) {
-	int index = distance(OrientCorrelation.begin(), std::upper_bound(OrientCorrelation.begin(), OrientCorrelation.end(), 2.71928)); // search the (ordered) vector for the last element larger than euler's number, retrieve the index
-	if (index == int(OrientCorrelation.size())) index = 9999999;
+	int index = distance(OrientCorrelation.begin(), std::lower_bound(OrientCorrelation.begin(), OrientCorrelation.end(), 2.71928)); // search the (ordered) vector for first element smaller than euler's number, retrieve the index
+	if (index == int(OrientCorrelation.size())) index = 9999999;	//if 
 	std::ofstream tau_orientfile(filename, std::ios_base::app);
-	tau_orientfile << double(index) * model.timestep* model.steps_between_cfgs << '\t' << model.temperature << '\n';
+	tau_orientfile << index * model.timestep* model.steps_between_cfgs << '\t' << model.temperature << '\n';
 }
 
 void PrintNeighbors(SimulationParameters &model, std::string filename, std::vector<int> &NumberNeighbors) {
