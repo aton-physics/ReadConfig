@@ -5,8 +5,8 @@
 #include <assert.h>
 #include <algorithm> // std::upper_bound to find the value for tau_orient 
 #include <iterator> // istream_iterator
-#include "Point.h"
-#include "Numerical.h"
+#include "headers/Point.h"
+#include "headers/Numerical.h"
 
 //***********************************8/6/2018**********************************
 //This program takes in a potentially gigantic trajectory file from molecular dynamics (gigabytes) and calculates various quantites including correlation functions, diffusion via msd, and histograms/probability densities.

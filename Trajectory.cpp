@@ -10,8 +10,8 @@
 #include <assert.h>
 #include <limits> //numeric_limits
 #include <sys/stat.h> // mkdir
-#include "FnDeclarations.h"
-#include "ParameterClass.h" // store all the input parameters
+#include "headers/FnDeclarations.h"
+#include "headers/ParameterClass.h" // store all the input parameters
 #include "unistd.h"		//a POSIX API - getopt
 
 //***********************************1/27/18**********************************
