@@ -20,8 +20,7 @@
 //Held bonds fixed using RATTLE algorithm, iteratively solving equations of motion while using constraint dynamics to iteratively maintain bond lengths
 //This code is intended for study of diffusion in glass formers/supercooled liquids, and for the application of geodesics. constant NVE
 //Temperature is related to kinetic energy via : T = 2K/3N. Average energy is kBT/2 per degree of freedom. Molecules have 2 translational and 1 rotational degree of freedom, so 3N/2kbT is avg energy.
-//There should be two options remaining - either write to trajectory files, or store it all in a vector and pipe that to ReadConfig.
-
+// 8/9/18 Just refactored the program - size cut from 1100 lines to 653. Introduced a few objects, halved the number of global variables. TODO: Decouple the functions, get rid of more global variables.
 //Larger bond angles are difficult to handle. For the linear triatomic, I found that I needed maxit = 5*10^6, dt = 1*10^-4, tolerance=1*10^-4.
 
 const int n = 1;									//2n^2 atoms
