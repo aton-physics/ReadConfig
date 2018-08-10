@@ -23,7 +23,7 @@
 // 8/9/18 Just refactored the program - size cut from 1100 lines to 653. Introduced a few objects, halved the number of global variables. TODO: Decouple the functions, get rid of more global variables.
 //Larger bond angles are difficult to handle. For the linear triatomic, I found that I needed maxit = 5*10^6, dt = 1*10^-4, tolerance=1*10^-4.
 
-const int n = 1;									//2n^2 atoms
+const int n = 10;									//2n^2 atoms
 const int N = 2 * n * n;							//# molecules in simulation
 const int NA = 3;									//# atoms per molecule
 const int NB = 3;									//# bonds per molecule
@@ -48,15 +48,17 @@ int main(int argc, char ** argv) {
 	while (-1 != (c = getopt(argc, argv, optstring))) {
 		switch (c) {
 		case 'i': {	//create input files
-			InputGen();	//Bug: For now, I must assign a task_id even for the -i case, else std::stoi() throws an exception. i.e. with -i specified, need to qsub -q all.q -t 1-1 -tc 1 ./script.sh
+			InputGen();	// just run ./executable -i, don't need to qsub this one.
 			break;
 		}
 		case 'c': {	//read input files, ouput a melted configuration. can submit with qsub -q all.q -t begin-end:increment -tc numberofcores ./script.sh 
 			InputParameter parameter = ReadInput();
 			BondConstraints constraints(bondlength1, bondlength2, parameter.BondAngle);
+			parameter.print(std::cout);
 			std::vector<double> dsq = constraints.dsq();
 			GenerateMeltedConfiguration(parameter, constraints); //create a melted configuration according to the specified parameters 
 			break;
+			// if you're getting a complaint about invalid strings, make sure to use qsub -t option
 		}
 		case 's': {	//run a trajectory while saving configurations and the average potential energy per particle
 			InputParameter parameter = ReadInput();
@@ -66,7 +68,7 @@ int main(int argc, char ** argv) {
 			TargetTemperature(parameter.temperature, dsq);	// cool to desired temperature
 			int NumConfigs = parameter.NumConfigs;	//#of saved configurations. # configurations * skiptime + waiting time = total run length.
 			int skiptime = 10;	//skip this many time steps between configurations
-			run_for(30, dsq);	//pass most relaxation times
+			run_for(3000, dsq);	//pass most relaxation times
 			std::vector<double> PositionX, PositionY;
 			double PE = 0.0;
 			//std::ofstream ofs("CheckEnergy.data");
@@ -85,7 +87,7 @@ int main(int argc, char ** argv) {
 				PE += V;
 				//printEnergies(ofs);
 			}
-			std::ofstream energyfile("Trajectory/" + std::to_string(int(parameter.BondAngle)) + "/Energy" + tag + ".data");
+			std::ofstream energyfile("Trajectory/" + std::to_string(int(parameter.BondAngle)) + "degrees/Energy" + tag + ".data");
 			energyfile << parameter.temperature << '\t' << PE / double(N * NA) / NumConfigs << '\n';	//potential energy per particle, average over configurations
 			//std::ofstream outputfile("Trajectory/" + std::to_string(int(parameter.BondAngle)) + "/Trajectory" + tag + ".data");
 			for (std::vector<int>::size_type i = 0; i < PositionX.size(); i++) {
@@ -212,16 +214,18 @@ void InputGen() {		//create a bunch of input files in (AN ALREADY EXISTING!) sub
 	std::ofstream inputstream("inputfiles/input.data");
 	int linenumber = 1;	
 	for (std::vector<int>::size_type i = 0; i < BondAngle.size(); i++) {
-		mkdir(("Trajectory/" + std::to_string(BondAngle[i])).c_str(), ACCESSPERMS);
+		std::string angleout_filename = "Trajectory/" + std::to_string(BondAngle[i]) + "degrees";
+		mkdir(angleout_filename.c_str(), ACCESSPERMS);
 		for (std::vector<int>::size_type j = 0; j < densityIn.size() ; j++) {
 			for (std::vector<int>::size_type k = 0; k < temperatureIn.size(); k++) {
 				std::string angle_filename = "MeltedConfiguration/" + std::to_string(BondAngle[i]) + "degrees";	// MeltedConfiguration/75degrees/
+				mkdir("MeltedConfiguration", ACCESSPERMS);
 				mkdir(angle_filename.c_str(), ACCESSPERMS);
 				std::string N_filename = "N" + std::to_string(N);
 				mkdir((angle_filename + "/" + N_filename).c_str(), ACCESSPERMS);
 				std::string density_filename = std::to_string(densityIn[j]);
 				mkdir((angle_filename + "/" + N_filename + "/").c_str(), ACCESSPERMS);
-				inputstream << linenumber << '\t' << BondAngle[i] << '\t' << densityIn[j] << '\t' << temperatureIn[k] << '\t' << NumConfigs << '\t' << N << angle_filename + "/" + N_filename + "/" + density_filename + ".data\n";
+				inputstream << linenumber << '\t' << BondAngle[i] << '\t' << densityIn[j] << '\t' << temperatureIn[k] << '\t' << NumConfigs << '\t' << N << '\t' << angle_filename + "/" + N_filename + "/" + density_filename + ".data\n";
 				linenumber++;
 			}
 		}
@@ -237,17 +241,17 @@ void GenerateMeltedConfiguration(InputParameter &Parameters, BondConstraints &Bo
 	pack(Parameters.density, dsq);
 	double NewTemperature = Parameters.temperature + 0.1;
 	cool_past(NewTemperature, dsq);
-	run_for(10, dsq);
+	run_for(100, dsq);
 	PrintPositions(Parameters.MeltCfg, "No");	// don't apply pbc while printing, pbc is only used to calculate forces or print human-readable configurations
 }
 
 InputParameter ReadInput() { // construct with all the input parameters
-	//char * taskID_string;
-	//taskID_string = getenv("SGE_TASK_ID");
-	//std::string task_id = taskID_string;
-	//tag = task_id;
+	char* taskID_string;
+	taskID_string = getenv("SGE_TASK_ID");
+	std::string task_id = taskID_string;
+	tag = task_id;
 	std::ifstream myfile("inputfiles/input.data"); // read parameters from this file
-	tag = "1";
+	//tag = "1";
 	GotoLine(myfile, std::stoi(tag));	//skip to tagged line
 	int linenum, numcfg, NumMol;
 	double bondangle, density, temperature;

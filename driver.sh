@@ -11,4 +11,4 @@
 #$ -v LD_LIBRARY_PATH="/stratt/vale/toor/lib:/stratt/vale/toor/gcc62/lib64"
 #
 
-/home/aton/ReadConfig/Trajectory.exe -s | xz > "/home/aton/ReadConfig/Trajectory/75/Trajectory$SGE_TASK_ID.xz"
+/home/aton/ReadConfig/Trajectory.exe -s | xz > "/home/aton/ReadConfig/Trajectory/75degrees/Trajectory$SGE_TASK_ID.xz"
