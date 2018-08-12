@@ -54,7 +54,6 @@ int main(int argc, char ** argv) {
 		case 'c': {	//read input files, ouput a melted configuration. can submit with qsub -q all.q -t begin-end:increment -tc numberofcores ./script.sh 
 			InputParameter parameter = ReadInput();
 			BondConstraints constraints(bondlength1, bondlength2, parameter.BondAngle);
-			parameter.print(std::cout);
 			std::vector<double> dsq = constraints.dsq();
 			GenerateMeltedConfiguration(parameter, constraints); //create a melted configuration according to the specified parameters 
 			break;
@@ -204,7 +203,7 @@ void AssignInitialConditions(InputParameter &Parameters, double hotter) {	//assi
 	InitialVelocities(Parameters.temperature + hotter); 
 }
 
-void InputGen() {		//create a bunch of input files in (AN ALREADY EXISTING!) subdirectory "inputfiles"
+void InputGen() {		//create a bunch of input files in subdirectory "inputfiles", also mkdir all the directories of interest
 	//linecount -> bond angle -> density -> temperature -> #configurations -> N -> path/to/MeltedConfiguration
 	std::vector<int> BondAngle = { 60, 75, 90, 105, 120, 135, 150, 165, 180 };
 	std::vector<double>densityIn = { 0.20 }, temperatureIn = { 0.6, 0.55, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2 };

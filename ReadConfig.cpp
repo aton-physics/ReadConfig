@@ -5,15 +5,18 @@
 #include <assert.h>
 #include <algorithm> // std::upper_bound to find the value for tau_orient 
 #include <iterator> // istream_iterator
-#include "headers/Point.h"
+#include <sys/stat.h> // mkdir
+#include "headers/Point.h" // Point class, some storage structs
+#include "headers/ParameterClass.h" // InputParameter class reads my input files, SimulationParameters has a few extra that ReadConfig needs, that aren't part of input
 #include "headers/Numerical.h"
 
 //***********************************8/6/2018**********************************
 //This program takes in a potentially gigantic trajectory file from molecular dynamics (gigabytes) and calculates various quantites including correlation functions, diffusion via msd, and histograms/probability densities.
-//Input: The trajectory file (sequential lines of 'x' \t 'y'); and somehow grab number of molecules N, number of atoms NA, density, temperature. 
+//Meant to be called as a subprocess through a shell driver that also grabs task_id from the Sun Grid Engine. something like ./WriteTrajectoryToSTDOUT | xz > CompressTrajectory.xz, then unxz
 //Profiler: most of time is spent calculated pbc, not too surprising. 
 
-SimulationParameters GetParams(std::string inputfile);
+InputParameter ReadInput();
+SimulationParameters GetParams(InputParameter Input);
 std::vector<std::vector<std::vector<Point>>> ParseTrajectoryFile(SimulationParameters &model, std::string TrajectoryFile);
 double CalculateS(SimulationParameters &model, double &NormalizationSq, std::vector<std::vector<std::vector<Point>>> &PositionVector, int &configuration_number);
 void PrintHistogram(SimulationParameters &model, HistogramInfo &hist, std::string filename, std::vector<double> &data, std::string mode);
@@ -25,16 +28,17 @@ void FindRelaxationTime(SimulationParameters &model, std::string filename, std::
 void PrintNeighbors(SimulationParameters &model, std::string filename, std::vector<int> &NumberNeighbors);
 void PrintMicroscopy(SimulationParameters &model, std::string filename, std::vector<std::vector<std::vector<Point>>> &PositionVector, int num_frames);
 
+std::string tag = "FailedtoAssignTag"; //should package this with the ReadInput function
+
 int main() {
-	std::string tag = "5";
-	SimulationParameters model = GetParams("dummystring");
-	std::vector<std::string> AllOutputFiles = { "OrientCorrelation/OrientCorrelation" + tag + ".data", "msd/msd" + tag + ".data", "Diffusion/Diffusion" + tag + ".data",
-		"FunctionsOfTemperature/Tau_orient/Tau" + tag + ".data", "OrderParameter/OrderParameter" + tag + ".data", "PairCorrelation/PairCorrelation" + tag + ".data",
-		"Neighbors/Neighbors" + tag + ".data" };
-	PrintHeaders(model, AllOutputFiles); // give all the output files density and temperature headers. does not include the derivative file.
-	std::vector<std::vector<std::vector<Point>>> Positions = ParseTrajectoryFile(model, "Trajectory/Trajectory31.data"); // read Trajectory file, write to Positions[:,:,:] configuration:molecule:atom
+	InputParameter parameter = ReadInput();
+	SimulationParameters model = GetParams(parameter);
+	std::vector<std::string> OutputFolders = { "OrientCorrelation", "msd", "Diffusion", "Tau_orient", "OrderParameter", "PairCorrelation", "Neighbors"};
+	PrintHeaders(model, OutputFolders); // Make these folders, write a file called $task_id.data and give it a header specifying temperature and density
+	//std::vector<std::vector<std::vector<Point>>> Positions = ParseTrajectoryFile(model, "Trajectory/Trajectory31.data"); // read Trajectory file, write to Positions[:,:,:] configuration:molecule:atom
+	std::vector<std::vector<std::vector<Point>>> Positions = ParseSTDIN(model);
 	HistogramInfo HistOrderParameter(0.005, int(1 / 0.005)), HistRDF(0.01, int(model.boxl / 2 / 0.01));
-	int t_cor = int(500 / model.timestep / model.steps_between_cfgs); // correlation function is measured for this long (in units of model.timestep* #skipped configurations)
+	int t_cor = int(1000 / model.timestep / model.steps_between_cfgs); // correlation function is measured for this long (in units of model.timestep* #skipped configurations)
 	assert(model.num_cfgs >= t_cor); //make sure there at least as many configurations as correlation steps
 	std::vector<double> OrderParameter(HistOrderParameter.num_bins), PairCorrelation(HistRDF.num_bins), OrientCorrelation(t_cor), MeanSqDisplacement(t_cor);
 	std::vector<int> NumberNeighbors(10);
@@ -51,7 +55,6 @@ int main() {
 			Cm_J[n][i] = (Positions[n][i][2] + Positions[n][i][1] + Positions[n][i][0]) / 3.0 ;
 		}
 	}
-	std::cout << "completed main calculation \n";
 	int NumberOfTrajectories = model.num_cfgs - t_cor + 1; // every new configuration constitutes new initial conditions when calculating correlation functions. But we measure correlation up to CorrTimeScale, so we have that many fewer trajectories
 	for (int j = 0; j < NumberOfTrajectories; j++) {
 		for (int k = 0; k < t_cor; k++) {
@@ -65,9 +68,8 @@ int main() {
 			MeanSqDisplacement[k] += total_cm;
 		}
 	}
-	std::cout << "completed correlation calculation \n";
-	std::ofstream orientfile("OrientCorrelation/OrientCorrelation" + tag + ".data");
-	std::ofstream msdfile("msd/msd" + tag + ".data");
+	std::ofstream orientfile(OutputFolders[0]);
+	std::ofstream msdfile(OutputFolders[1]);
 	for (int k = 0; k < t_cor; k++) {
 		OrientCorrelation[k] = 2.0 * OrientCorrelation[k] / pow(OrientationMagnitude,2)/ double(model.N) / NumberOfTrajectories - 1;	// divide here so I can use std::upper_bound later
 		MeanSqDisplacement[k] /= (double(model.N) * double(NumberOfTrajectories));
@@ -75,20 +77,36 @@ int main() {
 		orientfile << what_time << '\t' << OrientCorrelation[k] << '\n';
 		msdfile << what_time << '\t' << MeanSqDisplacement[k] << '\n';
 	}
-	numerical_differentiation("msd/msd" + tag + ".data", "derivative/derivative" + tag + ".data", model.steps_between_cfgs*model.timestep); // derivative/derivative is a temporary solution to see how long I should wait before taking the zero slope regression line
+	numerical_differentiation(OutputFolders[1], "derivative", model.steps_between_cfgs*model.timestep, tag); // derivative/derivative is a temporary solution to see how long I should wait before taking the zero slope regression line
 	//best way to do this is to not print anything but diffusion (maybe msd). send msd to numerical_diff to zero_slope > diffusion.data, don't ever want to look at derivative
-	zero_slope_regression("derivative/derivative" + tag + ".data", "FunctionsOfTemperature/Diffusion_trans/Diffusion" + tag + ".data", model.temperature, 10.0);	// skip 10 tau before taking the regression
-	FindRelaxationTime(model, "FunctionsOfTemperature/Tau_orient/Tau" + tag + ".data", OrientCorrelation);
-	PrintHistogram(model, HistOrderParameter, "OrderParameter/OrderParameter" + tag + ".data", OrderParameter, "prob_density");
-	PrintHistogram(model, HistRDF, "PairCorrelation/PairCorrelation" + tag + ".data", PairCorrelation, "histogram");
-	PrintNeighbors(model, "Neighbors/Neighbors" + tag + ".data", NumberNeighbors);
-	PrintMicroscopy(model, "Microscopy/Microscopy" + tag + ".data", Positions, 100);
+	zero_slope_regression("derivative", OutputFolders[2], model.temperature, 10.0, tag);	// skip 10 tau before taking the regression
+	FindRelaxationTime(model, OutputFolders[3] + "/" + tag + ".data", OrientCorrelation);
+	PrintHistogram(model, HistOrderParameter, OutputFolders[4] + "/" + tag + ".data", OrderParameter, "prob_density");
+	PrintHistogram(model, HistRDF, OutputFolders[5] + "/" + tag + ".data", PairCorrelation, "histogram");
+	PrintNeighbors(model, OutputFolders[6] + "/" + tag + ".data", NumberNeighbors);
+	PrintMicroscopy(model, "Microscopy/" + tag + ".data", Positions, 1000);
 	return 0;
 }
 
-SimulationParameters GetParams(std::string inputfile) { //read in parameter file, assign all the parameters.
-	double density = 0.25, temperature = 0.5, ts = 0.001;
-	int num_mol = 200, num_atom = 3, numcfg = 2*100000;
+InputParameter ReadInput() { // construct with all the input parameters
+	char* taskID_string;
+	taskID_string = getenv("SGE_TASK_ID");
+	std::string task_id = taskID_string;
+	tag = task_id;
+	std::ifstream myfile("inputfiles/input.data"); // read parameters from this file
+												   //tag = "1";
+	GotoLine(myfile, std::stoi(tag));	//skip to tagged line
+	int linenum, numcfg, NumMol;
+	double bondangle, density, temperature;
+	std::string MeltedCfg;
+	myfile >> linenum >> bondangle >> density >> temperature >> numcfg >> NumMol >> MeltedCfg;
+	InputParameter parameters(bondangle, density, temperature, numcfg, NumMol, MeltedCfg);
+	return parameters;
+}
+
+SimulationParameters GetParams(InputParameter Input) { //read in input file, assign all the parameters.
+	double density = Input.density, temperature = Input.temperature, ts = 0.001;
+	int num_mol = Input.N, num_atom = 3, numcfg = Input.NumConfigs;
 	double boxl = sqrt(num_mol / density);
 	double boxinv = 1.0 / boxl;
 	SimulationParameters model(density, temperature, boxl, boxinv, ts, numcfg, num_mol, num_atom);
@@ -98,6 +116,12 @@ SimulationParameters GetParams(std::string inputfile) { //read in parameter file
 std::vector<std::vector<std::vector<Point>>> ParseTrajectoryFile(SimulationParameters &model, std::string TrajectoryFile) {
 	std::ifstream ifs(TrajectoryFile);
 	std::vector<double> parsed(std::istream_iterator<double>(ifs), {}); // initialize vector using the istream
+	std::vector<std::vector<std::vector<Point>>> Positions = FillPositionVector(model, parsed);	// copy parsed input file into Positions
+	return Positions;
+}
+
+std::vector<std::vector<std::vector<Point>>> ParseSTDIN(SimulationParameters &model) {
+	std::vector<double> parsed(std::istream_iterator<double>(std::cin), {}); // initialize vector using the istream
 	std::vector<std::vector<std::vector<Point>>> Positions = FillPositionVector(model, parsed);	// copy parsed input file into Positions
 	return Positions;
 }
@@ -191,8 +215,11 @@ std::vector<std::vector<std::vector<Point>>> FillPositionVector(SimulationParame
 	return Positions;
 }
 
-void PrintHeaders(SimulationParameters &model, std::vector<std::string> &stringvector) {	// to each of the files in stringvector, give them a header specifying density and temperature so I can plot with titles
+void PrintHeaders(SimulationParameters &model, std::vector<std::string> &stringvector) {	// to each of the files in stringvector, assign a task_id to each of the filenames to differentiate between trajectories
+	// also mkdir all the directories, and give header specifying density and temperature to label plots
 	for (auto &i : stringvector) {
+		mkdir(stringvector.c_str(), ACCESSPERMS);
+		i = i + "/" + tag + ".data";
 		std::ofstream ofs(i);
 		ofs << model.density << '\t' << model.temperature << '\n';
 	}
@@ -200,7 +227,7 @@ void PrintHeaders(SimulationParameters &model, std::vector<std::string> &stringv
 
 void FindRelaxationTime(SimulationParameters &model, std::string filename, std::vector<double> &OrientCorrelation) {
 	int index = distance(OrientCorrelation.begin(), std::lower_bound(OrientCorrelation.begin(), OrientCorrelation.end(), 2.71928)); // search the (ordered) vector for first element smaller than euler's number, retrieve the index
-	if (index == int(OrientCorrelation.size())) index = 9999999;	//if 
+	if (index == int(OrientCorrelation.size())) index = 9999999; 
 	std::ofstream tau_orientfile(filename, std::ios_base::app);
 	tau_orientfile << index * model.timestep* model.steps_between_cfgs << '\t' << model.temperature << '\n';
 }

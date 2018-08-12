@@ -4,6 +4,7 @@
 #include <cmath>
 #include <string>
 #include "Point.h"
+#include "sys/stat.h"
 
 //Algorithm adapted from http://web.archive.org/web/20140702223114/http://faculty.cs.niu.edu/~hutchins/csci230/best-fit.htm
 struct Line {
@@ -71,9 +72,10 @@ void get_regression(std::string inputfilename, std::string outputfilename, const
 	regressionstream  << myline._slope / 4 << '\t' <<  myline.get_sigma(pointvector, myline) << '\t' << myline._yInt;
 };
 
-void numerical_differentiation(std::string inputfilename, std::string outputfilename, double stepsize) {	//important: stepsize is however long the time is between f[i] and f[i+1], i.e. ts * dt <=> skipped steps * timestep
+void numerical_differentiation(std::string inputfilename, std::string outputfolder, double stepsize, std::string tag) {	//important: stepsize is however long the time is between f[i] and f[i+1], i.e. ts * dt <=> skipped steps * timestep
 	std::ifstream input_file(inputfilename);
 	std::string dummyLine;
+	getLine(input_filem dummyLine);
 	getline(input_file, dummyLine); // throw away zeroes (zero time, zero displacement)
 	std::vector<Point> msdvector;
 	int counter = 0;
@@ -83,7 +85,8 @@ void numerical_differentiation(std::string inputfilename, std::string outputfile
 		msdvector.push_back(point);
 		counter += 1;
 	}
-	// For whatever reason, and I can't tell why, the ifstream doesnt go through the entire file. For 5000 lines, it stopped at 4754. How about for more? Test and see.
+	mkdir(outputfolder.c_str(), ACCESSPERMS);
+	std::string outputfilename = outputfolder + "/" + tag + ".data";
 	std::ofstream regressionstream(outputfilename);
 	double derivative = 0.0;
 	for (int i = 2; i < counter - 2; i++) {
@@ -93,8 +96,9 @@ void numerical_differentiation(std::string inputfilename, std::string outputfile
 	}
 };
 
-void zero_slope_regression(std::string inputfilename, std::string outputfilename, double temperature, double wait) {	//b_fit = mean(y - mx) for (x,y) column vector
+void zero_slope_regression(std::string inputfolder, std::string outputfolder, double temperature, double wait , std::string tag) {	//b_fit = mean(y - mx) for (x,y) column vector
 	std::vector<Point> diffvector;
+	std::string inputfilename = inputfolder + "/" + tag + ".data";
 	std::ifstream input_file(inputfilename);
 	double x, y;
 	double counter = 0;
@@ -119,7 +123,9 @@ void zero_slope_regression(std::string inputfilename, std::string outputfilename
 	}
 	MSE /= nPoints;
 	MSE = sqrt(MSE);
-	std::ofstream regressionstream(outputfilename, std::ios_base::app); // want to write a header to outputfile before calling this function
+	mkdir(outputfolder.c_str(), ACCESSPERMS);
+	std::string outputfilename = outputfolder + "/" + tag + ".data"
+	std::ofstream regressionstream(outputfilename, std::ios_base::app); // don't overwrite the header
 	regressionstream << temperature << '\t' << b_fit / 4 << '\t' << MSE / 4 << '\n';
 };
 
