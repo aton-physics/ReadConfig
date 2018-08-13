@@ -15,13 +15,12 @@
 #include "unistd.h"		//a POSIX API - getopt
 
 //***********************************1/27/18**********************************
-//NA = 3, NB = 3 means we have a rigid nonlinear triatomic molecule. Parameters currently set for Lewis-Wahnstrom ortho-terphenyl molecules in 2 dimensions
-//Basic simulation code adapted from Allen & Tildesley 
-//Held bonds fixed using RATTLE algorithm, iteratively solving equations of motion while using constraint dynamics to iteratively maintain bond lengths
+//NA = 3, NB = 3 -> rigid nonlinear triatomic molecule.
+//Held bonds fixed using RATTLE algorithm, solving equations of motion while using (linear approx. of) constraint forces to keep bond length constraints rigid
 //This code is intended for study of diffusion in glass formers/supercooled liquids, and for the application of geodesics. constant NVE
 //Temperature is related to kinetic energy via : T = 2K/3N. Average energy is kBT/2 per degree of freedom. Molecules have 2 translational and 1 rotational degree of freedom, so 3N/2kbT is avg energy.
 // 8/9/18 Just refactored the program - size cut from 1100 lines to 653. Introduced a few objects, halved the number of global variables. TODO: Decouple the functions, get rid of more global variables.
-//Larger bond angles are difficult to handle. For the linear triatomic, I found that I needed maxit = 5*10^6, dt = 1*10^-4, tolerance=1*10^-4.
+//SHAKE, RATTLE have degenerate solutions for 180 degree bond angles, so linear molecules consisting of 3 or more atoms cannot be handled.
 
 const int n = 10;									//2n^2 atoms
 const int N = 2 * n * n;							//# molecules in simulation
@@ -33,7 +32,7 @@ double rhoBar = 0.10;								//PARAMETER: Initial reduced number density, N * si
 double boxl = sqrt(N / rhoBar);						//periodic box length - this is modified by pack, so can leave it global.
 double boxinv = 1.0 / boxl;
 double boxl2 = boxl * 0.5;
-const double tol = 1.0e-9;							//RATTLE algorithm tolerances - 1.0e-10 worked up until 126 degree bond angle (with maxit=50)
+const double tol = 1.0e-7;							//RATTLE algorithm tolerances - 1.0e-10 worked up until 126 degree bond angle (with maxit=50)
 double timekeeping = 0;
 double rx[N][NA], ry[N][NA], vx[N][NA], vy[N][NA];
 double fx[N][NA], fy[N][NA];
@@ -74,10 +73,6 @@ int main(int argc, char ** argv) {
 			for (int n = 0; n < NumConfigs; n++) {
 				for (int i = 0; i < N; i++) {
 					for (int a = 0; a < NA; a++) {	//store positions
-						//double rxia = rx[i][a] - static_cast<int>(rx[i][a] * boxinv + ((rx[i][a] >= 0.0) ? 0.5 : -0.5)) * boxl;	//minimum image algorithm, "efficient coding of the minimum image convention" by U K Deiters
-						//double ryia = ry[i][a] - static_cast<int>(ry[i][a] * boxinv + ((ry[i][a] >= 0.0) ? 0.5 : -0.5)) * boxl;
-						//PositionX.push_back(rxia);
-						//PositionY.push_back(ryia);
 						PositionX.push_back(rx[i][a]);
 						PositionY.push_back(ry[i][a]);
 					}
@@ -88,9 +83,7 @@ int main(int argc, char ** argv) {
 			}
 			std::ofstream energyfile("Trajectory/" + std::to_string(int(parameter.BondAngle)) + "degrees/Energy" + tag + ".data");
 			energyfile << parameter.temperature << '\t' << PE / double(N * NA) / NumConfigs << '\n';	//potential energy per particle, average over configurations
-			//std::ofstream outputfile("Trajectory/" + std::to_string(int(parameter.BondAngle)) + "/Trajectory" + tag + ".data");
 			for (std::vector<int>::size_type i = 0; i < PositionX.size(); i++) {
-				//outputfile << PositionX[i] << '\t' << PositionY[i] << '\n';	
 				std::cout << PositionX[i] << '\t' << PositionY[i] << '\n';
 			}
 			break;
@@ -205,9 +198,9 @@ void AssignInitialConditions(InputParameter &Parameters, double hotter) {	//assi
 
 void InputGen() {		//create a bunch of input files in subdirectory "inputfiles", also mkdir all the directories of interest
 	//linecount -> bond angle -> density -> temperature -> #configurations -> N -> path/to/MeltedConfiguration
-	std::vector<int> BondAngle = { 60, 75, 90, 105, 120, 135, 150, 165, 180 };
-	std::vector<double>densityIn = { 0.20 }, temperatureIn = { 0.6, 0.55, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2 };
-	int NumConfigs = 2 * 100000;
+	std::vector<int> BondAngle = { 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165};
+	std::vector<double>densityIn = { 0.20 }, temperatureIn = { 0.7, 0.6, 0.55, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2 };
+	int NumConfigs = 3 * 100000;
 	mkdir("Trajectory", ACCESSPERMS);
 	mkdir("inputfiles", ACCESSPERMS);
 	std::ofstream inputstream("inputfiles/input.data");
@@ -451,7 +444,7 @@ void velocityverlet(std::vector<double> &dsq) {								//advance position and ve
 	double rxi[NA], ryi[NA], pxi[NA], pyi[NA], vxi[NA], vyi[NA];
 	double axia, ayia, pxab, pyab, pabsq, rabsq, diffsq, rxab, ryab, rpab, gab, dx, dy, vxab, vyab, rvab;
 	bool moving[NA], moved[NA], done;
-	int b, it, maxit = 5000000;							//maxit = maximum allowed iterations
+	int b, it, maxit = 500000;							//maxit = maximum allowed iterations
 	computeForces();
 	for (int i = 0; i < N; i++) {
 		for (int a = 0; a < NA; a++) {				//advance positions full-step, velocities half-step (unconstrained)

@@ -28,6 +28,7 @@ void NearestNeighbors(SimulationParameters &model, std::vector<std::vector<std::
 std::vector<std::vector<std::vector<Point>>> FillPositionVector(SimulationParameters &model, std::vector<double> &ParsedInput);
 std::vector<std::string> FoldersToFiles(SimulationParameters &model, std::vector<std::string> &stringvector, std::string tag);
 void FindRelaxationTime(SimulationParameters &model, std::string filename, std::vector<double> OrientCorrelation);
+double PairCorrelationFirstMin(SimulationParameters &model, HistogramInfo &hist, std::vector<double> &data);
 void PrintNeighbors(SimulationParameters &model, std::string filename, std::vector<int> &NumberNeighbors);
 void PrintMicroscopy(SimulationParameters &model, std::string filename, std::vector<std::vector<std::vector<Point>>> &PositionVector, int num_frames, std::string tag);
 
@@ -45,13 +46,11 @@ int main() {
 	std::vector<double> OrderParameter(HistOrderParameter.num_bins), PairCorrelation(HistRDF.num_bins), OrientCorrelation(t_cor), MeanSqDisplacement(t_cor);
 	std::vector<int> NumberNeighbors(10);
 	std::vector<std::vector<Point>> OmegaJ(model.num_cfgs, std::vector<Point>(model.N)), Cm_J(model.num_cfgs, std::vector<Point>(model.N));
-	double NeighborCutOffSq = 1.61 * 1.61;
 	double OrientationMagnitude = Positions[5][0][2].dist_sq(Positions[5][0][1]);
 	for (int n = 0; n < model.num_cfgs; n++) {
 		int bin = int(CalculateS(model, OrientationMagnitude, Positions, n) / HistOrderParameter.bin_width);
 		OrderParameter[bin] += 1;
 		radial_df(model, Positions, HistRDF, PairCorrelation, n);
-		NearestNeighbors(model, Positions, NumberNeighbors, n, NeighborCutOffSq);
 		for (int i = 0; i < model.N; i++) {	// Store orientations, center of mass of each molecule for every configuration to calculate C(t), MSD(t) respectively.
 			OmegaJ[n][i] = Positions[n][i][2] - Positions[n][i][1];
 			Cm_J[n][i] = (Positions[n][i][2] + Positions[n][i][1] + Positions[n][i][0]) / 3.0;
@@ -85,6 +84,10 @@ int main() {
 	FindRelaxationTime(model, OutputFiles[3], OrientCorrelation);
 	PrintHistogram(model, HistOrderParameter, OutputFiles[4], OrderParameter, "prob_density");
 	PrintHistogram(model, HistRDF, OutputFiles[5], PairCorrelation, "histogram");
+	double NeighborCutOffSq = pow(PairCorrelationFirstMin(model, HistRDF, PairCorrelation), 2);
+	for (int n = 0; n < model.num_cfgs; n++) {
+		NearestNeighbors(model, Positions, NumberNeighbors, n, NeighborCutOffSq);
+	}
 	PrintNeighbors(model, OutputFiles[6], NumberNeighbors);
 	PrintMicroscopy(model, "Microscopy", Positions, 1000, tag);
 	return 0;
@@ -160,6 +163,18 @@ void PrintHistogram(SimulationParameters &model, HistogramInfo &hist, std::strin
 		else if (mode == "prob_density") ofs << binvalue << '\t' << data[bin] / model.num_cfgs / hist.bin_width << '\n'; // if optional parameter is specified and greater than 1, divide bin count by bin width. This turns a histogram into a probability density
 		else std::cout << "Bad parameter for PrintHistogram()";
 	}
+}
+
+double PairCorrelationFirstMin(SimulationParameters &model, HistogramInfo &hist, std::vector<double> &data) {	// defines nearest neighbor cutoff distance
+	double minimum = 1.61;
+	for (int bin = 1; bin < hist.num_bins; bin++) {	// skip first bin to make range checking happy
+		if (double(bin) * hist.bin_width < 1) continue;	// first minimum doesn't come before 1 sigma.
+		if (data[bin] - data[bin - 1] && data[bin + 1] - data[bin] > 0.0) {	// if bin is greater than the previous and less than the next, then it is a minimum.
+			double binvalue = double(bin) * hist.bin_width;
+			return binvalue*binvalue;
+		}
+	}
+	return minimum;
 }
 
 void radial_df(SimulationParameters &model, std::vector<std::vector<std::vector<Point>>> &PositionVector, HistogramInfo &hist, std::vector<double> &rdf, int &configuration_number) {	// atom-atom g(r). function takes in Positions and fills out a vector of doubles
