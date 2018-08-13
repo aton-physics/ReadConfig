@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <algorithm> // std::upper_bound to find the value for tau_orient 
 #include <iterator> // istream_iterator
+#include <iomanip> // std::setprecision
 #include <sys/stat.h> // mkdir
 #include "headers/Point.h" // Point class, some storage structs
 #include "headers/ParameterClass.h" // InputParameter class reads my input files, SimulationParameters has a few extra that ReadConfig needs, that aren't part of input
@@ -16,7 +17,7 @@
 //Profiler: most of time is spent calculated pbc, not too surprising. 
 
 std::ifstream& GotoLine(std::ifstream& file, unsigned int num);
-InputParameter ReadInput();
+InputParameter ReadInput(std::string &tag);
 SimulationParameters GetParams(InputParameter Input);
 std::vector<std::vector<std::vector<Point>>> ParseTrajectoryFile(SimulationParameters &model, std::string TrajectoryFile);
 std::vector<std::vector<std::vector<Point>>> ParseSTDIN(SimulationParameters &model);
@@ -25,17 +26,17 @@ void PrintHistogram(SimulationParameters &model, HistogramInfo &hist, std::strin
 void radial_df(SimulationParameters &model, std::vector<std::vector<std::vector<Point>>> &PositionVector, HistogramInfo &hist, std::vector<double> &rdf, int &configuration_number);	
 void NearestNeighbors(SimulationParameters &model, std::vector<std::vector<std::vector<Point>>> &PositionVector, std::vector<int> &NeighborVector, int &ConfigurationNumber, double &NeighborCutOffSq);
 std::vector<std::vector<std::vector<Point>>> FillPositionVector(SimulationParameters &model, std::vector<double> &ParsedInput);
-void PrintHeaders(SimulationParameters &model, std::vector<std::string> &stringvector);	
+std::vector<std::string> FoldersToFiles(SimulationParameters &model, std::vector<std::string> &stringvector, std::string tag);
 void FindRelaxationTime(SimulationParameters &model, std::string filename, std::vector<double> &OrientCorrelation);
 void PrintNeighbors(SimulationParameters &model, std::string filename, std::vector<int> &NumberNeighbors);
-void PrintMicroscopy(SimulationParameters &model, std::string filename, std::vector<std::vector<std::vector<Point>>> &PositionVector, int num_frames);
-std::string tag = "FailedtoAssignTag";	// To make this a local variable, just pass it as a parameter to all the printing functions..
+void PrintMicroscopy(SimulationParameters &model, std::string filename, std::vector<std::vector<std::vector<Point>>> &PositionVector, int num_frames, std::string tag);
 
 int main() {
-	InputParameter parameter = ReadInput();
+	std::string tag = "FailedtoAssignTag";
+	InputParameter parameter = ReadInput(tag);
 	SimulationParameters model = GetParams(parameter);
 	std::vector<std::string> OutputFolders = { "OrientCorrelation", "msd", "Diffusion", "Tau_orient", "OrderParameter", "PairCorrelation", "Neighbors"};
-	PrintHeaders(model, OutputFolders); // Make these folders, write a file called $task_id.data and give it a header specifying temperature and density
+	std::vector<std::string> OutputFiles = FoldersToFiles(model, OutputFolders, tag);
 	//std::vector<std::vector<std::vector<Point>>> Positions = ParseTrajectoryFile(model, "Trajectory/Trajectory31.data"); // read Trajectory file, write to Positions[:,:,:] configuration:molecule:atom
 	std::vector<std::vector<std::vector<Point>>> Positions = ParseSTDIN(model);
 	HistogramInfo HistOrderParameter(0.005, int(1 / 0.005)), HistRDF(0.01, int(model.boxl / 2 / 0.01));
@@ -69,23 +70,23 @@ int main() {
 			MeanSqDisplacement[k] += total_cm;
 		}
 	}
-	std::ofstream orientfile(OutputFolders[0]);
-	std::ofstream msdfile(OutputFolders[1]);
+	std::ofstream orientfile(OutputFiles[0]);
+	std::ofstream msdfile(OutputFiles[1]);
 	for (int k = 0; k < t_cor; k++) {
 		OrientCorrelation[k] = 2.0 * OrientCorrelation[k] / pow(OrientationMagnitude,2)/ double(model.N) / NumberOfTrajectories - 1;	// divide here so I can use std::upper_bound later
 		MeanSqDisplacement[k] /= (double(model.N) * double(NumberOfTrajectories));
 		double what_time = k * model.timestep* model.steps_between_cfgs;
 		orientfile << what_time << '\t' << OrientCorrelation[k] << '\n';
-		msdfile << what_time << '\t' << MeanSqDisplacement[k] << '\n';
+		msdfile << what_time << '\t' << std::setprecision(10) << MeanSqDisplacement[k] << '\n';	//numerical imprecision in numerical differentiation (subtraction of nearly equal values)
 	}
-	numerical_differentiation(OutputFolders[1], "derivative", model.steps_between_cfgs*model.timestep, tag); // derivative/derivative is a temporary solution to see how long I should wait before taking the zero slope regression line
+	numerical_differentiation(OutputFiles[1], "derivative", model.steps_between_cfgs*model.timestep, tag); // derivative/derivative is a temporary solution to see how long I should wait before taking the zero slope regression line
 	//best way to do this is to not print anything but diffusion (maybe msd). send msd to numerical_diff to zero_slope > diffusion.data, don't ever want to look at derivative
-	zero_slope_regression("derivative", OutputFolders[2], model.temperature, 10.0, tag);	// skip 10 tau before taking the regression
-	FindRelaxationTime(model, OutputFolders[3] + "/" + tag + ".data", OrientCorrelation);
-	PrintHistogram(model, HistOrderParameter, OutputFolders[4] + "/" + tag + ".data", OrderParameter, "prob_density");
-	PrintHistogram(model, HistRDF, OutputFolders[5] + "/" + tag + ".data", PairCorrelation, "histogram");
-	PrintNeighbors(model, OutputFolders[6] + "/" + tag + ".data", NumberNeighbors);
-	PrintMicroscopy(model, "Microscopy", Positions, 1000);
+	zero_slope_regression("derivative", OutputFiles[2], model.temperature, 10.0, tag);	// skip 10 tau before taking the regression
+	FindRelaxationTime(model, OutputFiles[3], OrientCorrelation);
+	PrintHistogram(model, HistOrderParameter, OutputFiles[4], OrderParameter, "prob_density");
+	PrintHistogram(model, HistRDF, OutputFiles[5], PairCorrelation, "histogram");
+	PrintNeighbors(model, OutputFiles[6], NumberNeighbors);
+	PrintMicroscopy(model, "Microscopy", Positions, 1000, tag);
 	return 0;
 }
 
@@ -98,7 +99,7 @@ std::ifstream& GotoLine(std::ifstream& file, unsigned int num) {//skip to a cert
 	return file;
 }
 
-InputParameter ReadInput() { // construct with all the input parameters
+InputParameter ReadInput(std::string &tag) { // construct with all the input parameters
 	char* taskID_string;
 	taskID_string = getenv("SGE_TASK_ID");
 	std::string task_id = taskID_string;
@@ -225,14 +226,17 @@ std::vector<std::vector<std::vector<Point>>> FillPositionVector(SimulationParame
 	return Positions;
 }
 
-void PrintHeaders(SimulationParameters &model, std::vector<std::string> &stringvector) {	// to each of the files in stringvector, assign a task_id to each of the filenames to differentiate between trajectories
-	// also mkdir all the directories, and give header specifying density and temperature to label plots
-	for (auto &i : stringvector) {
+std::vector<std::string> FoldersToFiles(SimulationParameters &model, std::vector<std::string> &stringvector, std::string tag) {
+	// Make the specified Folders, then turn them into their respective Folder/$task_id.data, then print a header (density, temperature) for plotting ease
+	std::vector<std::string> vectorstring;
+	for (auto i : stringvector) {
 		mkdir(i.c_str(), ACCESSPERMS);
 		i = i + "/" + tag + ".data";
+		vectorstring.push_back(i);
 		std::ofstream ofs(i);
 		ofs << model.density << '\t' << model.temperature << '\n';
 	}
+	return vectorstring;
 }
 
 void FindRelaxationTime(SimulationParameters &model, std::string filename, std::vector<double> &OrientCorrelation) {
@@ -249,7 +253,7 @@ void PrintNeighbors(SimulationParameters &model, std::string filename, std::vect
 	}
 }
 
-void PrintMicroscopy(SimulationParameters &model, std::string filename, std::vector<std::vector<std::vector<Point>>> &PositionVector, int num_frames) {
+void PrintMicroscopy(SimulationParameters &model, std::string filename, std::vector<std::vector<std::vector<Point>>> &PositionVector, int num_frames, std::string tag) {
 	mkdir(filename.c_str(), ACCESSPERMS);
 	filename = filename + "/" + tag + ".data";
 	std::ofstream ofs(filename);
