@@ -23,11 +23,11 @@ std::vector<std::vector<std::vector<Point>>> ParseTrajectoryFile(SimulationParam
 std::vector<std::vector<std::vector<Point>>> ParseSTDIN(SimulationParameters &model);
 double CalculateS(SimulationParameters &model, double &NormalizationSq, std::vector<std::vector<std::vector<Point>>> &PositionVector, int &configuration_number);
 void PrintHistogram(SimulationParameters &model, HistogramInfo &hist, std::string filename, std::vector<double> &data, std::string mode);
-void radial_df(SimulationParameters &model, std::vector<std::vector<std::vector<Point>>> &PositionVector, HistogramInfo &hist, std::vector<double> &rdf, int &configuration_number);	
+void radial_df(SimulationParameters &model, std::vector<std::vector<std::vector<Point>>> &PositionVector, HistogramInfo &hist, std::vector<double> &rdf, int &configuration_number);
 void NearestNeighbors(SimulationParameters &model, std::vector<std::vector<std::vector<Point>>> &PositionVector, std::vector<int> &NeighborVector, int &ConfigurationNumber, double &NeighborCutOffSq);
 std::vector<std::vector<std::vector<Point>>> FillPositionVector(SimulationParameters &model, std::vector<double> &ParsedInput);
 std::vector<std::string> FoldersToFiles(SimulationParameters &model, std::vector<std::string> &stringvector, std::string tag);
-void FindRelaxationTime(SimulationParameters &model, std::string filename, std::vector<double> &OrientCorrelation);
+void FindRelaxationTime(SimulationParameters &model, std::string filename, std::vector<double> OrientCorrelation);
 void PrintNeighbors(SimulationParameters &model, std::string filename, std::vector<int> &NumberNeighbors);
 void PrintMicroscopy(SimulationParameters &model, std::string filename, std::vector<std::vector<std::vector<Point>>> &PositionVector, int num_frames, std::string tag);
 
@@ -35,7 +35,7 @@ int main() {
 	std::string tag = "FailedtoAssignTag";
 	InputParameter parameter = ReadInput(tag);
 	SimulationParameters model = GetParams(parameter);
-	std::vector<std::string> OutputFolders = { "OrientCorrelation", "msd", "Diffusion", "Tau_orient", "OrderParameter", "PairCorrelation", "Neighbors"};
+	std::vector<std::string> OutputFolders = { "OrientCorrelation", "msd", "Diffusion", "Tau_orient", "OrderParameter", "PairCorrelation", "Neighbors" };
 	std::vector<std::string> OutputFiles = FoldersToFiles(model, OutputFolders, tag);
 	//std::vector<std::vector<std::vector<Point>>> Positions = ParseTrajectoryFile(model, "Trajectory/Trajectory31.data"); // read Trajectory file, write to Positions[:,:,:] configuration:molecule:atom
 	std::vector<std::vector<std::vector<Point>>> Positions = ParseSTDIN(model);
@@ -54,7 +54,7 @@ int main() {
 		NearestNeighbors(model, Positions, NumberNeighbors, n, NeighborCutOffSq);
 		for (int i = 0; i < model.N; i++) {	// Store orientations, center of mass of each molecule for every configuration to calculate C(t), MSD(t) respectively.
 			OmegaJ[n][i] = Positions[n][i][2] - Positions[n][i][1];
-			Cm_J[n][i] = (Positions[n][i][2] + Positions[n][i][1] + Positions[n][i][0]) / 3.0 ;
+			Cm_J[n][i] = (Positions[n][i][2] + Positions[n][i][1] + Positions[n][i][0]) / 3.0;
 		}
 	}
 	int NumberOfTrajectories = model.num_cfgs - t_cor + 1; // every new configuration constitutes new initial conditions when calculating correlation functions. But we measure correlation up to CorrTimeScale, so we have that many fewer trajectories
@@ -64,7 +64,7 @@ int main() {
 			for (int i = 0; i < model.N; i++) {
 				total_omega += pow(OmegaJ[j][i].dot(OmegaJ[j + k][i]), 2);
 				Point cm_temp = Cm_J[j][i] - Cm_J[j + k][i];
-				total_cm += pow(cm_temp.x(),2) + pow(cm_temp.y(),2);
+				total_cm += pow(cm_temp.x(), 2) + pow(cm_temp.y(), 2);
 			}
 			OrientCorrelation[k] += total_omega;
 			MeanSqDisplacement[k] += total_cm;
@@ -73,14 +73,14 @@ int main() {
 	std::ofstream orientfile(OutputFiles[0]);
 	std::ofstream msdfile(OutputFiles[1]);
 	for (int k = 0; k < t_cor; k++) {
-		OrientCorrelation[k] = 2.0 * OrientCorrelation[k] / pow(OrientationMagnitude,2)/ double(model.N) / NumberOfTrajectories - 1;	// divide here so I can use std::upper_bound later
+		OrientCorrelation[k] = 2.0 * OrientCorrelation[k] / pow(OrientationMagnitude, 2) / double(model.N) / NumberOfTrajectories - 1;	// divide here so I can use std::upper_bound later
 		MeanSqDisplacement[k] /= (double(model.N) * double(NumberOfTrajectories));
 		double what_time = k * model.timestep* model.steps_between_cfgs;
 		orientfile << what_time << '\t' << OrientCorrelation[k] << '\n';
 		msdfile << what_time << '\t' << std::setprecision(10) << MeanSqDisplacement[k] << '\n';	//numerical imprecision in numerical differentiation (subtraction of nearly equal values)
 	}
 	numerical_differentiation(OutputFiles[1], "derivative", model.steps_between_cfgs*model.timestep, tag); // derivative/derivative is a temporary solution to see how long I should wait before taking the zero slope regression line
-	//best way to do this is to not print anything but diffusion (maybe msd). send msd to numerical_diff to zero_slope > diffusion.data, don't ever want to look at derivative
+																										   //best way to do this is to not print anything but diffusion (maybe msd). send msd to numerical_diff to zero_slope > diffusion.data, don't ever want to look at derivative
 	zero_slope_regression("derivative", OutputFiles[2], model.temperature, 10.0, tag);	// skip 10 tau before taking the regression
 	FindRelaxationTime(model, OutputFiles[3], OrientCorrelation);
 	PrintHistogram(model, HistOrderParameter, OutputFiles[4], OrderParameter, "prob_density");
@@ -146,7 +146,7 @@ double CalculateS(SimulationParameters &model, double &NormalizationSq, std::vec
 		Q1 += pow(OmegaJ.x(), 2);
 		Q2 += OmegaJ.x() * OmegaJ.y();
 	}
-	Q1 = 2*Q1 / NormalizationSq - model.N;	// each of OmegaJ.x and OmegaJ.y carry a factor of 1/Normalization, so their product has a factor of 1/NormalizationSq.
+	Q1 = 2 * Q1 / NormalizationSq - model.N;	// each of OmegaJ.x and OmegaJ.y carry a factor of 1/Normalization, so their product has a factor of 1/NormalizationSq.
 	Q2 *= 2 / NormalizationSq;
 	s = sqrt(Q1 * Q1 + Q2 * Q2) / model.N;
 	return s;
@@ -173,8 +173,8 @@ void radial_df(SimulationParameters &model, std::vector<std::vector<std::vector<
 				for (int b = 0; b < model.NA; b++) {
 					Point r_jakb = PositionVector[configuration_number][j][a] - PositionVector[configuration_number][k][b]; //calculate pair separation
 					r_jakb = r_jakb.pbc(model.boxl, model.invboxl);	// fold the pair separation to get the minimum image separation
-					rij = sqrt(r_jakb.dot(r_jakb));	
-					bin = int(rij / hist.bin_width);	
+					rij = sqrt(r_jakb.dot(r_jakb));
+					bin = int(rij / hist.bin_width);
 					if (bin < hist.num_bins) {	// make sure we only count particles out as far as some maximum (set to be half the box length)
 						histo[bin] += 2;		// if rij falls within the range of the bin, count two particles (i and j)
 					}
@@ -239,11 +239,15 @@ std::vector<std::string> FoldersToFiles(SimulationParameters &model, std::vector
 	return vectorstring;
 }
 
-void FindRelaxationTime(SimulationParameters &model, std::string filename, std::vector<double> &OrientCorrelation) {
-	int index = distance(OrientCorrelation.begin(), std::lower_bound(OrientCorrelation.begin(), OrientCorrelation.end(), 2.71928)); // search the (ordered) vector for first element smaller than euler's number, retrieve the index
-	if (index == int(OrientCorrelation.size())) index = 9999999; 
+void FindRelaxationTime(SimulationParameters &model, std::string filename, std::vector<double> OrientCorrelation) {	// Want to temporarily transform OrientCorrelation, so pass by value.
+	for (auto &i : OrientCorrelation) {
+		i *= -1;	// flip the signature on the values of OrientCorrelation since it's monotonically decreasing and I want to use std::upper_bound
+	}
+	std::vector<double>::iterator it = std::lower_bound(OrientCorrelation.begin(), OrientCorrelation.end(), -0.367879);	// find first value not less than negative inverse euler's number
+	auto index = it - OrientCorrelation.begin();
+	if (index == int(OrientCorrelation.size())) index = 9999999;
 	std::ofstream tau_orientfile(filename, std::ios_base::app);
-	tau_orientfile << index * model.timestep* model.steps_between_cfgs << '\t' << model.temperature << '\n';
+	tau_orientfile << model.temperature << '\t' << index * model.timestep* model.steps_between_cfgs << '\n';
 }
 
 void PrintNeighbors(SimulationParameters &model, std::string filename, std::vector<int> &NumberNeighbors) {

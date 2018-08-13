@@ -69,7 +69,7 @@ void get_regression(std::string inputfilename, std::string outputfilename, const
 	myline.fitPoints(pointvector);
 	std::ofstream regressionstream;
 	regressionstream.open(outputfilename, std::ios_base::app);
-	regressionstream  << myline._slope / 4 << '\t' <<  myline.get_sigma(pointvector, myline) << '\t' << myline._yInt;
+	regressionstream << myline._slope / 4 << '\t' << myline.get_sigma(pointvector, myline) << '\t' << myline._yInt;
 };
 
 void numerical_differentiation(std::string inputfilename, std::string outputfolder, double stepsize, std::string tag) {	//important: stepsize is however long the time is between f[i] and f[i+1], i.e. ts * dt <=> skipped steps * timestep
@@ -87,16 +87,16 @@ void numerical_differentiation(std::string inputfilename, std::string outputfold
 	}
 	mkdir(outputfolder.c_str(), ACCESSPERMS);
 	std::string outputfilename = outputfolder + "/" + tag + ".data";
-	std::ofstream regressionstream(outputfilename);
+	std::ofstream regressionstream(outputfilename, std::ios_base::app);
 	double derivative = 0.0;
 	for (int i = 2; i < counter - 2; i++) {
 		derivative = -msdvector[i + 2].y() + 8 * msdvector[i + 1].y() - 8 * msdvector[i - 1].y() + msdvector[i - 2].y();
 		derivative /= (12 * stepsize);
-		regressionstream <<  msdvector[i].x() << '\t' << derivative << '\n';
+		regressionstream << msdvector[i].x() << '\t' << derivative << '\n';
 	}
 };
 
-void zero_slope_regression(std::string inputfolder, std::string outputfilename, double temperature, double wait , std::string tag) {	//b_fit = mean(y - mx) for (x,y) column vector
+void zero_slope_regression(std::string inputfolder, std::string outputfilename, double temperature, double wait, std::string tag) {	//b_fit = mean(y - mx) for (x,y) column vector
 	std::vector<Point> diffvector;
 	std::string inputfilename = inputfolder + "/" + tag + ".data";
 	std::ifstream input_file(inputfilename);
@@ -128,56 +128,56 @@ void zero_slope_regression(std::string inputfolder, std::string outputfilename, 
 };
 
 /*void StdErrMean(std::string inputfilename, std::string inputfilename2, int NumFiles, int Resolution, int Index) {	//NumFiles specifies how many files I have, Resolution specifies how many points I chose to generate, Index labels what file to start from
-	std::vector<double> MeanDiffusion(Resolution, 0.0);
-	std::vector<double> StdErrDiffusion(Resolution, 0.0);
-	std::vector<double> MeanTemperature(Resolution, 0.0); //this should be the same as the individual entries, redundancy is helpful for bugs
-	std::vector<double> MSDT(Resolution, 0.0), MeanMSDT(Resolution, 0.0), TemperatureMSDT(Resolution, 0.0);
-	double density;
-	for (int i = Index; i < NumFiles + Index; i++) {
-		double a, b, c;
-		std::ifstream myfile(inputfilename + std::to_string(i + 1) + ".data");	//make sure inputfilename is "angell/angell"
-		std::ifstream MSDTfile(inputfilename2 + std::to_string(i + 1) + ".data");
-		int k = 0;
-		while (MSDTfile >> a >> b >> c >> density) {	//msdt, time, T, density
-			MSDT[k] += a;
-			TemperatureMSDT[k] += c;
-			k++;
-		}
-		int j = 0;
-		while (myfile >> a >> b >> c >> density) {
-			MeanDiffusion[j] += a;
-			StdErrDiffusion[j] += b;
-			MeanTemperature[j] += c;
-			j++;
-		}
-	}
-	std::ofstream file(inputfilename + std::to_string(Index / NumFiles + 1) + "Total.data");
-	std::ofstream file2(inputfilename2 + std::to_string(Index / NumFiles + 1) + "Total.data");
-	for (int i = 0; i < Resolution; i++) {
-		MeanDiffusion[i] /= NumFiles;
-		StdErrDiffusion[i] /= (NumFiles * sqrt(NumFiles)); //StdErr of the mean is average stdev divided by sqrt(# measurements)
-		MeanTemperature[i] /= NumFiles;
-		MeanMSDT[i] = MSDT[i] / NumFiles;
-		file << MeanDiffusion[i] << '\t' << StdErrDiffusion[i] << '\t' << MeanTemperature[i] << '\t' << density << '\t' << MeanMSDT[i] << '\n';
-	}
-	std::vector<double> sigma(Resolution, 0.0);
-	for (int i = 0; i < NumFiles; i++) {
-		std::ifstream MSDTfile(inputfilename2 + std::to_string(i + 1) + ".data");
-		double a, b, c;
-		int k = 0;
-		while (MSDTfile >> a >> b >> c >> density) {	//go through MSDTfile, grab MSDT values for each temperature
-			MSDT[k] = a;
-			k++;
-		}
-		for (int j = 0; j < Resolution; j++) {
-			sigma[j] += pow(MSDT[j] - MeanMSDT[j], 2);		//accumulate residuals, first going down the file labeled i + 1 using indices j for each temperature
-		}
-	}
-	for (int j = 0; j < Resolution; j++) {
-		sigma[j] /= (NumFiles);							//stdev = sqrt(residual / n)
-		sigma[j] = sqrt(sigma[j]);
-		sigma[j] /= sqrt(NumFiles);						//stderr of mean = stdev / sqrt(n)
-		TemperatureMSDT[j] /= NumFiles;
-		file2 << MeanMSDT[j] << '\t' << sigma[j] << '\t' << TemperatureMSDT[j] << '\t' << density << '\n';
-	}
+std::vector<double> MeanDiffusion(Resolution, 0.0);
+std::vector<double> StdErrDiffusion(Resolution, 0.0);
+std::vector<double> MeanTemperature(Resolution, 0.0); //this should be the same as the individual entries, redundancy is helpful for bugs
+std::vector<double> MSDT(Resolution, 0.0), MeanMSDT(Resolution, 0.0), TemperatureMSDT(Resolution, 0.0);
+double density;
+for (int i = Index; i < NumFiles + Index; i++) {
+double a, b, c;
+std::ifstream myfile(inputfilename + std::to_string(i + 1) + ".data");	//make sure inputfilename is "angell/angell"
+std::ifstream MSDTfile(inputfilename2 + std::to_string(i + 1) + ".data");
+int k = 0;
+while (MSDTfile >> a >> b >> c >> density) {	//msdt, time, T, density
+MSDT[k] += a;
+TemperatureMSDT[k] += c;
+k++;
+}
+int j = 0;
+while (myfile >> a >> b >> c >> density) {
+MeanDiffusion[j] += a;
+StdErrDiffusion[j] += b;
+MeanTemperature[j] += c;
+j++;
+}
+}
+std::ofstream file(inputfilename + std::to_string(Index / NumFiles + 1) + "Total.data");
+std::ofstream file2(inputfilename2 + std::to_string(Index / NumFiles + 1) + "Total.data");
+for (int i = 0; i < Resolution; i++) {
+MeanDiffusion[i] /= NumFiles;
+StdErrDiffusion[i] /= (NumFiles * sqrt(NumFiles)); //StdErr of the mean is average stdev divided by sqrt(# measurements)
+MeanTemperature[i] /= NumFiles;
+MeanMSDT[i] = MSDT[i] / NumFiles;
+file << MeanDiffusion[i] << '\t' << StdErrDiffusion[i] << '\t' << MeanTemperature[i] << '\t' << density << '\t' << MeanMSDT[i] << '\n';
+}
+std::vector<double> sigma(Resolution, 0.0);
+for (int i = 0; i < NumFiles; i++) {
+std::ifstream MSDTfile(inputfilename2 + std::to_string(i + 1) + ".data");
+double a, b, c;
+int k = 0;
+while (MSDTfile >> a >> b >> c >> density) {	//go through MSDTfile, grab MSDT values for each temperature
+MSDT[k] = a;
+k++;
+}
+for (int j = 0; j < Resolution; j++) {
+sigma[j] += pow(MSDT[j] - MeanMSDT[j], 2);		//accumulate residuals, first going down the file labeled i + 1 using indices j for each temperature
+}
+}
+for (int j = 0; j < Resolution; j++) {
+sigma[j] /= (NumFiles);							//stdev = sqrt(residual / n)
+sigma[j] = sqrt(sigma[j]);
+sigma[j] /= sqrt(NumFiles);						//stderr of mean = stdev / sqrt(n)
+TemperatureMSDT[j] /= NumFiles;
+file2 << MeanMSDT[j] << '\t' << sigma[j] << '\t' << TemperatureMSDT[j] << '\t' << density << '\n';
+}
 };*/
