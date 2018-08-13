@@ -75,7 +75,7 @@ void get_regression(std::string inputfilename, std::string outputfilename, const
 void numerical_differentiation(std::string inputfilename, std::string outputfolder, double stepsize, std::string tag) {	//important: stepsize is however long the time is between f[i] and f[i+1], i.e. ts * dt <=> skipped steps * timestep
 	std::ifstream input_file(inputfilename);
 	std::string dummyLine;
-	getLine(input_filem dummyLine);
+	getline(input_file, dummyLine);	// throw away header
 	getline(input_file, dummyLine); // throw away zeroes (zero time, zero displacement)
 	std::vector<Point> msdvector;
 	int counter = 0;
@@ -124,7 +124,7 @@ void zero_slope_regression(std::string inputfolder, std::string outputfolder, do
 	MSE /= nPoints;
 	MSE = sqrt(MSE);
 	mkdir(outputfolder.c_str(), ACCESSPERMS);
-	std::string outputfilename = outputfolder + "/" + tag + ".data"
+	std::string outputfilename = outputfolder + "/" + tag + ".data";
 	std::ofstream regressionstream(outputfilename, std::ios_base::app); // don't overwrite the header
 	regressionstream << temperature << '\t' << b_fit / 4 << '\t' << MSE / 4 << '\n';
 };

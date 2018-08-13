@@ -15,9 +15,11 @@
 //Meant to be called as a subprocess through a shell driver that also grabs task_id from the Sun Grid Engine. something like ./WriteTrajectoryToSTDOUT | xz > CompressTrajectory.xz, then unxz
 //Profiler: most of time is spent calculated pbc, not too surprising. 
 
+std::ifstream& GotoLine(std::ifstream& file, unsigned int num);
 InputParameter ReadInput();
 SimulationParameters GetParams(InputParameter Input);
 std::vector<std::vector<std::vector<Point>>> ParseTrajectoryFile(SimulationParameters &model, std::string TrajectoryFile);
+std::vector<std::vector<std::vector<Point>>> ParseSTDIN(SimulationParameters &model);
 double CalculateS(SimulationParameters &model, double &NormalizationSq, std::vector<std::vector<std::vector<Point>>> &PositionVector, int &configuration_number);
 void PrintHistogram(SimulationParameters &model, HistogramInfo &hist, std::string filename, std::vector<double> &data, std::string mode);
 void radial_df(SimulationParameters &model, std::vector<std::vector<std::vector<Point>>> &PositionVector, HistogramInfo &hist, std::vector<double> &rdf, int &configuration_number);	
@@ -27,8 +29,7 @@ void PrintHeaders(SimulationParameters &model, std::vector<std::string> &stringv
 void FindRelaxationTime(SimulationParameters &model, std::string filename, std::vector<double> &OrientCorrelation);
 void PrintNeighbors(SimulationParameters &model, std::string filename, std::vector<int> &NumberNeighbors);
 void PrintMicroscopy(SimulationParameters &model, std::string filename, std::vector<std::vector<std::vector<Point>>> &PositionVector, int num_frames);
-
-std::string tag = "FailedtoAssignTag"; //should package this with the ReadInput function
+std::string tag = "FailedtoAssignTag";	// To make this a local variable, just pass it as a parameter to all the printing functions..
 
 int main() {
 	InputParameter parameter = ReadInput();
@@ -84,8 +85,17 @@ int main() {
 	PrintHistogram(model, HistOrderParameter, OutputFolders[4] + "/" + tag + ".data", OrderParameter, "prob_density");
 	PrintHistogram(model, HistRDF, OutputFolders[5] + "/" + tag + ".data", PairCorrelation, "histogram");
 	PrintNeighbors(model, OutputFolders[6] + "/" + tag + ".data", NumberNeighbors);
-	PrintMicroscopy(model, "Microscopy/" + tag + ".data", Positions, 1000);
+	PrintMicroscopy(model, "Microscopy", Positions, 1000);
 	return 0;
+}
+
+
+std::ifstream& GotoLine(std::ifstream& file, unsigned int num) {//skip to a certain line in data file
+	file.seekg(std::ios::beg);
+	for (unsigned int i = 0; i < num - 1; ++i) {
+		file.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+	}
+	return file;
 }
 
 InputParameter ReadInput() { // construct with all the input parameters
@@ -218,7 +228,7 @@ std::vector<std::vector<std::vector<Point>>> FillPositionVector(SimulationParame
 void PrintHeaders(SimulationParameters &model, std::vector<std::string> &stringvector) {	// to each of the files in stringvector, assign a task_id to each of the filenames to differentiate between trajectories
 	// also mkdir all the directories, and give header specifying density and temperature to label plots
 	for (auto &i : stringvector) {
-		mkdir(stringvector.c_str(), ACCESSPERMS);
+		mkdir(i.c_str(), ACCESSPERMS);
 		i = i + "/" + tag + ".data";
 		std::ofstream ofs(i);
 		ofs << model.density << '\t' << model.temperature << '\n';
@@ -240,6 +250,8 @@ void PrintNeighbors(SimulationParameters &model, std::string filename, std::vect
 }
 
 void PrintMicroscopy(SimulationParameters &model, std::string filename, std::vector<std::vector<std::vector<Point>>> &PositionVector, int num_frames) {
+	mkdir(filename.c_str(), ACCESSPERMS);
+	filename = filename + "/" + tag + ".data";
 	std::ofstream ofs(filename);
 	for (int n = 0; n < num_frames; n++) {
 		for (int i = 0; i < model.N; i++) {
