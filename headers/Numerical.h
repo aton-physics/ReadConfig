@@ -96,7 +96,7 @@ void numerical_differentiation(std::string inputfilename, std::string outputfold
 	}
 };
 
-void zero_slope_regression(std::string inputfolder, std::string outputfolder, double temperature, double wait , std::string tag) {	//b_fit = mean(y - mx) for (x,y) column vector
+void zero_slope_regression(std::string inputfolder, std::string outputfilename, double temperature, double wait , std::string tag) {	//b_fit = mean(y - mx) for (x,y) column vector
 	std::vector<Point> diffvector;
 	std::string inputfilename = inputfolder + "/" + tag + ".data";
 	std::ifstream input_file(inputfilename);
@@ -123,8 +123,6 @@ void zero_slope_regression(std::string inputfolder, std::string outputfolder, do
 	}
 	MSE /= nPoints;
 	MSE = sqrt(MSE);
-	mkdir(outputfolder.c_str(), ACCESSPERMS);
-	std::string outputfilename = outputfolder + "/" + tag + ".data";
 	std::ofstream regressionstream(outputfilename, std::ios_base::app); // don't overwrite the header
 	regressionstream << temperature << '\t' << b_fit / 4 << '\t' << MSE / 4 << '\n';
 };
