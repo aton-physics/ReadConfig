@@ -44,7 +44,7 @@ int main() {
 	int t_cor = int(1000 / model.timestep / model.steps_between_cfgs); // correlation function is measured for this long (in units of model.timestep* #skipped configurations)
 	assert(model.num_cfgs >= t_cor); //make sure there at least as many configurations as correlation steps
 	std::vector<double> OrderParameter(HistOrderParameter.num_bins), PairCorrelation(HistRDF.num_bins), OrientCorrelation(t_cor), MeanSqDisplacement(t_cor);
-	std::vector<int> NumberNeighbors(10);
+	std::vector<int> NumberNeighbors(20);
 	std::vector<std::vector<Point>> OmegaJ(model.num_cfgs, std::vector<Point>(model.N)), Cm_J(model.num_cfgs, std::vector<Point>(model.N));
 	double OrientationMagnitude = Positions[5][0][2].dist_sq(Positions[5][0][1]);
 	for (int n = 0; n < model.num_cfgs; n++) {
@@ -69,8 +69,8 @@ int main() {
 			MeanSqDisplacement[k] += total_cm;
 		}
 	}
-	std::ofstream orientfile(OutputFiles[0]);
-	std::ofstream msdfile(OutputFiles[1]);
+	std::ofstream orientfile(OutputFiles[0], std::ios_base::app);
+	std::ofstream msdfile(OutputFiles[1], std::ios_base::app);
 	for (int k = 0; k < t_cor; k++) {
 		OrientCorrelation[k] = 2.0 * OrientCorrelation[k] / pow(OrientationMagnitude, 2) / double(model.N) / NumberOfTrajectories - 1;	// divide here so I can use std::upper_bound later
 		MeanSqDisplacement[k] /= (double(model.N) * double(NumberOfTrajectories));
@@ -85,6 +85,7 @@ int main() {
 	PrintHistogram(model, HistOrderParameter, OutputFiles[4], OrderParameter, "prob_density");
 	PrintHistogram(model, HistRDF, OutputFiles[5], PairCorrelation, "histogram");
 	double NeighborCutOffSq = pow(PairCorrelationFirstMin(model, HistRDF, PairCorrelation), 2);
+	std::cout << "Neighbor Cut Off Distance squared for me was: " << NeighborCutOffSq << '\n';
 	for (int n = 0; n < model.num_cfgs; n++) {
 		NearestNeighbors(model, Positions, NumberNeighbors, n, NeighborCutOffSq);
 	}
@@ -170,8 +171,10 @@ double PairCorrelationFirstMin(SimulationParameters &model, HistogramInfo &hist,
 	for (int bin = 1; bin < hist.num_bins; bin++) {	// skip first bin to make range checking happy
 		if (double(bin) * hist.bin_width < 1) continue;	// first minimum doesn't come before 1 sigma.
 		if (data[bin] - data[bin - 1] && data[bin + 1] - data[bin] > 0.0) {	// if bin is greater than the previous and less than the next, then it is a minimum.
-			double binvalue = double(bin) * hist.bin_width;
-			return binvalue*binvalue;
+			if (data[bin] / model.num_cfgs < 1.0) {	// We want the first minimum that is also a trough. If a minimum represents anticorrelation (g(r) < 1), then it is likely a trough. Otherwise it is a result of molecular geometry.
+				double binvalue = double(bin) * hist.bin_width;
+				return binvalue;
+			}
 		}
 	}
 	return minimum;
@@ -220,7 +223,7 @@ void NearestNeighbors(SimulationParameters &model, std::vector<std::vector<std::
 					}
 				}
 			}
-			assert(counter <= 10);
+			assert(counter <= 20);	//6 neighbors for molecules with non-overlapping disks. 
 			NeighborVector[counter] += 1; // If InRange, then register another near neighbor. 
 		}
 	}
