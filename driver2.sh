@@ -11,9 +11,4 @@
 #$ -v LD_LIBRARY_PATH="/stratt/vale/toor/lib:/stratt/vale/toor/gcc62/lib64"
 #
 
-task_num=$SGE_TASK_ID
-
-num_degrees=$(awk -v var=$task_num 'NR==var{print $2"degrees"}' inputfiles/input.data)
-
-/stratt/andrew/ReadConfig/Trajectory.exe -c #| xz >  \
-#"/stratt/andrew/ReadConfig/Trajectory/$num_degrees/Trajectory$SGE_TASK_ID.xz"
+unxz -c "/stratt/andrew/ReadConfig/Trajectory/75degrees/Trajectory$SGE_TASK_ID.xz" | ./ReadConfig.exe 

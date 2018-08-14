@@ -15,5 +15,7 @@ task_num=$SGE_TASK_ID
 
 num_degrees=$(awk -v var=$task_num 'NR==var{print $2"degrees"}' inputfiles/input.data)
 
-/stratt/andrew/ReadConfig/Trajectory.exe -c #| xz >  \
-#"/stratt/andrew/ReadConfig/Trajectory/$num_degrees/Trajectory$SGE_TASK_ID.xz"
+/stratt/andrew/ReadConfig/Trajectory.exe -s | xz > \
+"/stratt/andrew/ReadConfig/Trajectory/$num_degrees/Trajectory$SGE_TASK_ID.xz"
+
+unxz -c "/stratt/andrew/ReadConfig/Trajectory/$num_degrees/Trajectory$SGE_TASK_ID.xz" | ./ReadConfig.exe
