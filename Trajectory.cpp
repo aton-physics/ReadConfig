@@ -79,13 +79,19 @@ int main(int argc, char ** argv) {
 				}
 				velocityverlet_ts(skiptime, dsq);
 				PE += V;
+				if (n % 10000 == 0 && n != 0) {	// every 10000 configurations, print and clear the positions. Reduces vmem usage, prevents bad_alloc.
+					for (std::vector<int>::size_type i = 0; i < PositionX.size(); i++) {
+						std::cout << PositionX[i] << '\t' << PositionY[i] << '\n';
+					}
+					PositionX.clear();
+					PositionY.clear();
+					PositionX.shrink_to_fit();
+					PositionY.shrink_to_fit();
+				}
 				//printEnergies(ofs);
 			}
 			std::ofstream energyfile("Trajectory/" + std::to_string(int(parameter.BondAngle)) + "degrees/Energy" + tag + ".data");
 			energyfile << parameter.temperature << '\t' << PE / double(N * NA) / NumConfigs << '\n';	//potential energy per particle, average over configurations
-			for (std::vector<int>::size_type i = 0; i < PositionX.size(); i++) {
-				std::cout << PositionX[i] << '\t' << PositionY[i] << '\n';
-			}
 			break;
 		}
 		case '?': {
@@ -472,7 +478,7 @@ void velocityverlet(std::vector<double> &dsq) {								//advance position and ve
 					pabsq = pxab * pxab + pyab * pyab;
 					rabsq = dsq[a];
 					diffsq = rabsq - pabsq;
-					if (std::abs(diffsq) > (rabsq * tol2)) {
+					if (std::abs(diffsq) > (rabsq * tol2)) {			// if uncorrected bond length is different from the bond length constraint up to the square root of twice the tolerance
 						rxab = rxi[a] - rxi[b];
 						ryab = ryi[a] - ryi[b];
 						rpab = rxab * pxab + ryab * pyab;				//"s" per Andersen [1982]
