@@ -38,13 +38,11 @@ int main() {
 	SimulationParameters model = GetParams(parameter);
 	std::vector<std::string> OutputFolders = { "OrientCorrelation", "msd", "Diffusion", "Tau_orient", "OrderParameter", "PairCorrelation", "Neighbors" };
 	std::vector<std::string> OutputFiles = FoldersToFiles(model, OutputFolders, tag);
-	//std::vector<std::vector<std::vector<Point>>> Positions = ParseTrajectoryFile(model, "Trajectory/Trajectory31.data"); // read Trajectory file, write to Positions[:,:,:] configuration:molecule:atom
 	std::vector<std::vector<std::vector<Point>>> Positions = ParseSTDIN(model);
 	HistogramInfo HistOrderParameter(0.005, int(1 / 0.005)), HistRDF(0.01, int(model.boxl / 2 / 0.01));
 	int t_cor = int(1000 / model.timestep / model.steps_between_cfgs); // correlation function is measured for this long (in units of model.timestep* #skipped configurations)
 	assert(model.num_cfgs >= t_cor); //make sure there at least as many configurations as correlation steps
-	std::vector<double> OrderParameter(HistOrderParameter.num_bins), PairCorrelation(HistRDF.num_bins), OrientCorrelation(t_cor), MeanSqDisplacement(t_cor);
-	std::vector<int> NumberNeighbors(20);
+	std::vector<double> OrderParameter(HistOrderParameter.num_bins), PairCorrelation(HistRDF.num_bins);
 	std::vector<std::vector<Point>> OmegaJ(model.num_cfgs, std::vector<Point>(model.N)), Cm_J(model.num_cfgs, std::vector<Point>(model.N));
 	double OrientationMagnitude = Positions[5][0][2].dist_sq(Positions[5][0][1]);
 	for (int n = 0; n < model.num_cfgs; n++) {
@@ -56,7 +54,21 @@ int main() {
 			Cm_J[n][i] = (Positions[n][i][2] + Positions[n][i][1] + Positions[n][i][0]) / 3.0;
 		}
 	}
-	int NumberOfTrajectories = model.num_cfgs - t_cor + 1; // every new configuration constitutes new initial conditions when calculating correlation functions. But we measure correlation up to CorrTimeScale, so we have that many fewer trajectories
+	PrintMicroscopy(model, "Microscopy", Positions, 10000, tag);
+	PrintHistogram(model, HistOrderParameter, OutputFiles[4], OrderParameter, "prob_density");
+	OrderParameter.clear(); OrderParameter.shrink_to_fit();	//making space for Positions, is this necessary? not sure yet.
+	PrintHistogram(model, HistRDF, OutputFiles[5], PairCorrelation, "histogram");
+	double NeighborCutOffSq = pow(PairCorrelationFirstMin(model, HistRDF, PairCorrelation), 2);	// find the first minimum of g(r).
+	PairCorrelation.clear(); PairCorrelation.shrink_to_fit();
+	std::vector<int> NumberNeighbors(20);
+	for (int n = 0; n < model.num_cfgs; n++) {
+		NearestNeighbors(model, Positions, NumberNeighbors, n, NeighborCutOffSq);
+	}
+	Positions.clear(); Positions.shrink_to_fit();
+	PrintNeighbors(model, OutputFiles[6], NumberNeighbors);
+	NumberNeighbors.clear(); NumberNeighbors.shrink_to_fit();
+	int NumberOfTrajectories = model.num_cfgs - t_cor + 1; // every new configuration constitutes new initial conditions when calculating correlation functions.
+	std::vector<double> OrientCorrelation(t_cor), MeanSqDisplacement(t_cor);
 	for (int j = 0; j < NumberOfTrajectories; j++) {
 		for (int k = 0; k < t_cor; k++) {
 			double total_omega = 0.0, total_cm = 0.0;
@@ -78,22 +90,12 @@ int main() {
 		orientfile << what_time << '\t' << OrientCorrelation[k] << '\n';
 		msdfile << what_time << '\t' << std::setprecision(10) << MeanSqDisplacement[k] << '\n';	//numerical imprecision in numerical differentiation (subtraction of nearly equal values)
 	}
+	FindRelaxationTime(model, OutputFiles[3], OrientCorrelation);
 	numerical_differentiation(OutputFiles[1], "derivative", model.steps_between_cfgs*model.timestep, tag); // derivative/derivative is a temporary solution to see how long I should wait before taking the zero slope regression line
 																										   //best way to do this is to not print anything but diffusion (maybe msd). send msd to numerical_diff to zero_slope > diffusion.data, don't ever want to look at derivative
 	zero_slope_regression("derivative", OutputFiles[2], model.temperature, 10.0, tag);	// skip 10 tau before taking the regression
-	FindRelaxationTime(model, OutputFiles[3], OrientCorrelation);
-	PrintHistogram(model, HistOrderParameter, OutputFiles[4], OrderParameter, "prob_density");
-	PrintHistogram(model, HistRDF, OutputFiles[5], PairCorrelation, "histogram");
-	double NeighborCutOffSq = pow(PairCorrelationFirstMin(model, HistRDF, PairCorrelation), 2);
-	std::cout << "Neighbor Cut Off Distance squared for me was: " << NeighborCutOffSq << '\n';
-	for (int n = 0; n < model.num_cfgs; n++) {
-		NearestNeighbors(model, Positions, NumberNeighbors, n, NeighborCutOffSq);
-	}
-	PrintNeighbors(model, OutputFiles[6], NumberNeighbors);
-	PrintMicroscopy(model, "Microscopy", Positions, 1000, tag);
 	return 0;
 }
-
 
 std::ifstream& GotoLine(std::ifstream& file, unsigned int num) {//skip to a certain line in data file
 	file.seekg(std::ios::beg);
@@ -215,7 +217,6 @@ void NearestNeighbors(SimulationParameters &model, std::vector<std::vector<std::
 			for (int k = 0; k < model.N; k++) {
 				if (j == k) continue;			// skip neighbor check if loop is over the same molecule twice <=> make sure molecules are distinct
 				for (int b = 0; b < model.NA; b++) {
-					//Point r_jakb = (PositionVector[ConfigurationNumber][j][a] - PositionVector[ConfigurationNumber][k][b]).pbc(model.boxl, model.invboxl);
 					Point r_jakb = (PositionVector[ConfigurationNumber][j][a] - PositionVector[ConfigurationNumber][k][b]);
 					r_jakb = r_jakb.pbc(model.boxl, model.invboxl);
 					if (r_jakb.dot(r_jakb) <= NeighborCutOffSq) {	// check if close enough to be a neighbor
