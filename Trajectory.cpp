@@ -79,7 +79,7 @@ int main(int argc, char ** argv) {
 				}
 				velocityverlet_ts(skiptime, dsq);
 				PE += V;
-				if (n % 10000 == 0 && n != 0) {	// every 10000 configurations, print and clear the positions. Reduces vmem usage, prevents bad_alloc.
+				if ((n+1) % 10000 == 0 && n != 0) {	// every 10000 configurations, print and clear the positions. Reduces vmem usage, prevents bad_alloc.
 					for (std::vector<int>::size_type i = 0; i < PositionX.size(); i++) {
 						std::cout << PositionX[i] << '\t' << PositionY[i] << '\n';
 					}
@@ -206,7 +206,7 @@ void InputGen() {		//create a bunch of input files in subdirectory "inputfiles",
 	//linecount -> bond angle -> density -> temperature -> #configurations -> N -> path/to/MeltedConfiguration
 	std::vector<int> BondAngle = { 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165};
 	std::vector<double>densityIn = { 0.20 }, temperatureIn = { 0.7, 0.6, 0.55, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2 };
-	int NumConfigs = 3 * 100000;
+	int NumConfigs = 2.9 * 100000;
 	mkdir("Trajectory", ACCESSPERMS);
 	mkdir("inputfiles", ACCESSPERMS);
 	std::ofstream inputstream("inputfiles/input.data");
