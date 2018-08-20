@@ -87,12 +87,20 @@ void numerical_differentiation(std::string inputfilename, std::string outputfold
 	}
 	mkdir(outputfolder.c_str(), ACCESSPERMS);
 	std::string outputfilename = outputfolder + "/" + tag + ".data";
-	std::ofstream regressionstream(outputfilename, std::ios_base::app);
+	std::ofstream regressionstream(outputfilename);
 	double derivative = 0.0;
 	for (int i = 2; i < counter - 2; i++) {
-		derivative = -msdvector[i + 2].y() + 8 * msdvector[i + 1].y() - 8 * msdvector[i - 1].y() + msdvector[i - 2].y();
-		derivative /= (12 * stepsize);
-		regressionstream << msdvector[i].x() << '\t' << derivative << '\n';
+		stepsize = msdvector[i + 1].x() - msdvector[i].x();
+		if (msdvector[i + 2].x() - msdvector[i + 1].x() > msdvector[i - 1].x() - msdvector[i - 2].x() + 0.01) {	// if there is a discontinuity in the step, 3 steps will be unsafe. Print values from 3 steps behind.
+			derivative = -msdvector[i + 2 - 3].y() + 8 * msdvector[i + 1 - 3].y() - 8 * msdvector[i - 1 - 3].y() + msdvector[i - 2 - 3].y();
+			derivative /= (12 * (msdvector[i + 1 - 3].x() - msdvector[i - 3].x()));
+			regressionstream << msdvector[i].x() << '\t' << derivative << '\n';
+		}
+		else {
+			derivative = -msdvector[i + 2].y() + 8 * msdvector[i + 1].y() - 8 * msdvector[i - 1].y() + msdvector[i - 2].y();
+			derivative /= (12 * stepsize);
+			regressionstream << msdvector[i].x() << '\t' << derivative << '\n';
+		}
 	}
 };
 
