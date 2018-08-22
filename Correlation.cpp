@@ -56,7 +56,7 @@ int main() {
 	}
 	PrintNeighbors(model, OutputFiles[4], NumberNeighbors);
 	int NumberOfTrajectories = model.num_cfgs - t_cor + 1; // every new configuration constitutes new initial conditions when calculating correlation functions.
-	int NumberOfCoarseSteps = 7901; // 1 * 2500 + 10 * 2500 + 25 * 2500 + 25 * 401 to get to the 10^5'th index = 1000 tau = t_cor 
+	int NumberOfCoarseSteps = 7900; // 1 * 2500 + 10 * 2500 + 25 * 2500 + 25 * 400 to get to the 10^5'th index = ~999.x tau = t_cor 
 	std::vector<double> OrientCorrelation(NumberOfCoarseSteps), MeanSqDisplacement(NumberOfCoarseSteps);
 	CalculateCorrelationFunctionsOrderN(model, NumberOfTrajectories, t_cor, NumberOfCoarseSteps, OmegaJ, Cm_J, OrientCorrelation, MeanSqDisplacement, OutputFiles, OrientationMagnitude, tag);
 	FindRelaxationTime(model, OutputFiles[3], OrientCorrelation);
@@ -211,9 +211,8 @@ void CalculateCorrelationFunctionsOrderN(SimulationParameters &model, int &Numbe
 	for (std::vector<int>::size_type i = 0; i < CoarseIndex.size(); i++) {
 		if (i == 0) {
 			CoarseOffset.push_back(0);
-			continue;
 		}
-		CoarseOffset.push_back(CoarseOffset[i - 1] + CoarseIndex[i - 1] * blocksize);
+		else CoarseOffset.push_back(CoarseOffset[i - 1] + CoarseIndex[i - 1] * blocksize);
 	}
 	std::vector<std::vector<double>> Orient(4, std::vector<double>(blocksize)), MSD(4, std::vector<double>(blocksize));
 	for (int j = 0; j < NumberOfTrajectories; j++) {
@@ -223,9 +222,9 @@ void CalculateCorrelationFunctionsOrderN(SimulationParameters &model, int &Numbe
 		}
 		for (std::vector<int>::size_type p = 0; p < CoarseIndex.size(); p++) {
 			for (int k = 0; k < blocksize; k++) {
-				if (CoarseOffset[p] + (k*CoarseIndex[p]) >= t_cor) continue;	// if past t_cor, stop.
+				if (CoarseOffset[p] + (k*CoarseIndex[p]) >= t_cor) continue;	// if past t_cor, stop. (k >= 400)
 				double total_omega = 0.0, total_cm = 0.0;
-				for (int i = 0; i < model.N; i++) {
+				for (int i = 0; i < model.N; i++) {	//CoarseOffset[3] = 90,000. j = 190,000. k can be at most 399 since max index of OmegaJ is 289,999
 					total_omega += pow(OmegaJ[j][i].dot(OmegaJ[j + CoarseOffset[p] + (k*CoarseIndex[p])][i]), 2);
 					Point cm_temp = Cm_J[j][i] - Cm_J[j + CoarseOffset[p] + (k*CoarseIndex[p])][i];
 					total_cm += pow(cm_temp.x(), 2) + pow(cm_temp.y(), 2);
@@ -254,7 +253,6 @@ void CalculateCorrelationFunctionsOrderN(SimulationParameters &model, int &Numbe
 		orientfile << what_time << '\t' << OrientCorrelation[k] << '\n';
 		msdfile << what_time << '\t' << std::setprecision(12) << MeanSqDisplacement[k] << '\n';	//numerical imprecision in numerical differentiation (subtraction of nearly equal values)
 	}
-
 }
 
 void CalculateCorrelationFunctionsWindow(SimulationParameters &model, int &NumberOfTrajectories, int &t_cor, std::vector<std::vector<Point>> &OmegaJ, std::vector<std::vector<Point>> &Cm_J,
