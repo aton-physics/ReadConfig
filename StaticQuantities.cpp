@@ -236,7 +236,10 @@ void LabelRotatorsAndTranslators(SimulationParameters &model, std::vector<std::v
 	}
 	double Normalization = sqrt(OrientationMagnitude);
 	for (auto &i : rotator_displacement) {
-		i /= Normalization;
+		i /= (Normalization * NumberOfConfigurations * model.steps_between_cfgs * model.timestep);
+	}
+	for (auto &i : translator_displacement) {
+		i /= (NumberOfConfigurations * model.steps_between_cfgs * model.timestep);
 	}
 	int HistogramNumBins = 20;
 	RoughHistogram(rotator_displacement, HistogramNumBins, "Microscopy/Rotators/" + tag + ".data");
