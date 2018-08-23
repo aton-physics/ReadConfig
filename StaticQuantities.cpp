@@ -6,6 +6,7 @@
 #include <algorithm> // std::upper_bound to find the value for tau_orient, std::max_element() for RoughHistogram
 #include <iterator> // istream_iterator
 #include <iomanip> // std::setprecision
+#include <cmath> // acos
 #include <sys/stat.h> // mkdir
 #include "headers/Point.h" // Point class, some storage structs
 #include "headers/ParameterClass.h" // InputParameter class reads my input files, SimulationParameters has a few extra that ReadConfig needs, that aren't part of input
@@ -58,7 +59,8 @@ int main() {
 		if (n < Microscopy_Configurations) {	// for 5001 configurations, see who is rotating and who is translating. 
 			for (int i = 0; i < model.N; i++) {
 				Point Cm_i = (Positions[i][2] + Positions[i][1] + Positions[i][0]) / 3.0;
-				Point Orientation_i = (Positions[i][2] - Positions[i][1]);	//don't need to normalize since I only care about relative orientations
+				Point Orientation_i = (Positions[i][2] - Positions[i][1]);
+				Orientation_i = Orientation_i / sqrt(Orientation_i.dot(Orientation_i));
 				Microscopy_CenterOfMass[n][i] = Cm_i;
 				Microscopy_Orientation[n][i] = Orientation_i;
 			}
@@ -228,15 +230,15 @@ void LabelRotatorsAndTranslators(SimulationParameters &model, std::vector<std::v
 	std::vector<double> rotator_displacement(200), translator_displacement(200);
 	for (int k = 0; k < NumberOfConfigurations; k++) {
 		for (int i = 0; i < model.N; i++) {
-			double cm_displacement = (Microscopy_CenterOfMass[k][i].dist(Microscopy_CenterOfMass[k + 1][i]));	// a squared displacement (not quite a correlation function)
-			double orientation_displacement = (Microscopy_Orientation[k][i].dist(Microscopy_Orientation[k + 1][i]));	// a squared orientational displacement (not quite a correlation function)
+			double cm_displacement = (Microscopy_CenterOfMass[k][i].dist(Microscopy_CenterOfMass[k + 1][i]));	// magnitude of displacement (not quite a correlation function)
+			double angular_displacement_temporary = fabs(acos(Microscopy_Orientation[k][i].dot(Microscopy_Orientation[k + 1][i])));
+			double orientation_displacement = (fabs(angular_displacement_temporary) < 0.9999 ? angular_displacement_temporary : 0.0);	// magnitude of angular displacement (not quite a correlation function)
 			translator_displacement[i] += cm_displacement;
 			rotator_displacement[i] += orientation_displacement;
 		}
 	}
-	double Normalization = sqrt(OrientationMagnitude);
 	for (auto &i : rotator_displacement) {
-		i /= (Normalization * NumberOfConfigurations * model.steps_between_cfgs * model.timestep);
+		i /= (NumberOfConfigurations * model.steps_between_cfgs * model.timestep);
 	}
 	for (auto &i : translator_displacement) {
 		i /= (NumberOfConfigurations * model.steps_between_cfgs * model.timestep);
@@ -254,7 +256,7 @@ void LabelRotatorsAndTranslators(SimulationParameters &model, std::vector<std::v
 		if (translation > FastTranslation) Translators[i] = 10;	// use parula, palette in gnuplot
 		else if (translation < SlowTranslation) Translators[i] = 5;
 		else Translators[i] = 1;
-		if (rotation > FastRotation) Rotators[i] = 1;	// plot w circles starting from 0 degrees to 360 - 90*(integer) degrees. So fast molecules are pac-men, slow ones are half-moons.
+		if (rotation > FastRotation) Rotators[i] = 1;	// plot w circles starting from 0 degrees to 360 - 45*(integer) degrees. So fast molecules are small mouth pac-men, slow ones are large mouth pac men
 		else if (rotation < SlowRotation) Rotators[i] = 2;
 		else Rotators[i] = 0;
 	}
@@ -264,7 +266,7 @@ void RoughHistogram(std::vector<double> &data, int &NumberOfBins, std::string fi
 	std::ofstream ofs(filename);
 	double max = *std::max_element(data.begin(), data.end());
 	int num_bins = NumberOfBins;
-	double bin_width = max / num_bins;
+	double bin_width = double(max) / double(num_bins);
 	std::vector<int> count(num_bins);
 	for (auto &i : data) {	// bin values
 		int bin = int(i / bin_width);	// data / (max / num_bins) == data/max * num_bins, so this line sorts the value into the proper bin.
