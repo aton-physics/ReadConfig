@@ -21,8 +21,10 @@ std::ifstream& GotoLine(std::ifstream& file, unsigned int num);
 InputParameter ReadInput(std::string &tag);
 SimulationParameters GetParams(InputParameter Input);
 double CalculateS(SimulationParameters &model, double &NormalizationSq, std::vector<std::vector<Point>> &PositionVector);
+double CalculateX3(SimulationParameters &model, double &NormalizationSq, std::vector<std::vector<Point>> &PositionVector);
 void PrintHistogram(SimulationParameters &model, HistogramInfo &hist, std::string filename, std::vector<double> &data, std::string mode);
 void radial_df(SimulationParameters &model, std::vector<std::vector<Point>> &PositionVector, HistogramInfo &hist, std::vector<double> &rdf);
+void specific_radial_df(SimulationParameters &model, std::vector<std::vector<Point>> &PositionVector, HistogramInfo &hist, std::vector<double> &rdf, int which_atom);
 std::vector<std::string> FoldersToFiles(SimulationParameters &model, std::vector<std::string> &stringvector, std::string tag);
 void VideoMicroscopy(SimulationParameters &model, std::string filename, std::vector<std::vector<Point>> &PositionVector, std::string tag,
 	std::vector<int> &Rotators, std::vector<int> &Translators);
@@ -31,32 +33,43 @@ double BottomTenPercent(std::vector<double> VectorToSort);
 void LabelRotatorsAndTranslators(SimulationParameters &model, std::vector<std::vector<Point>> &Microscopy_CenterOfMass, std::vector<std::vector<Point>> &Microscopy_Orientation,
 	std::vector<int> &Rotators, std::vector<int> &Translators, double &OrientationMagnitude, int &Microscopy_Configurations, std::string tag);
 void RoughHistogram(std::vector<double> &data, int &NumberOfBins, std::string filename);
+void compute_structure_factor(SimulationParameters &model, std::vector<std::vector<Point>> &PositionVector, HistogramInfo &hist, std::vector<double> &sq);
 
 int main() {
 	std::string tag = "FailedtoAssignTag";
 	InputParameter parameter = ReadInput(tag);
 	SimulationParameters model = GetParams(parameter);
-	//std::vector<std::string> OutputFolders = { "OrderParameter", "PairCorrelation" };
+	mkdir("OrderParameter", ACCESSPERMS);
+	//std::vector<std::string> OutputFolders = { "OrderParameter/Nematic", "OrderParameter/Trigonal", "OrderParameter/Hexatic", "PairCorrelation/Atom", "PairCorrelation/center"};
+	std::vector<std::string> OutputFolders = { "PairCorrelation/StructureFactor" };
 	mkdir("Microscopy", ACCESSPERMS);
 	mkdir("Microscopy/Rotators", ACCESSPERMS);
 	mkdir("Microscopy/Translators", ACCESSPERMS);
 	std::ofstream("Microscopy/" + tag + ".data");
-	//std::vector<std::string> OutputFiles = FoldersToFiles(model, OutputFolders, tag);
-	//HistogramInfo HistOrderParameter(0.005, int(1 / 0.005)), HistRDF(0.01, int(model.boxl / 2 / 0.01));
-	//std::vector<double> OrderParameter(HistOrderParameter.num_bins), PairCorrelation(HistRDF.num_bins);
+	std::vector<std::string> OutputFiles = FoldersToFiles(model, OutputFolders, tag);
+	HistogramInfo HistOrderParameter(0.005, int(1 / 0.005)), HistRDF(0.01, int(model.boxl / 2 / 0.01)), HistX3(0.005, int(1 / 0.005)), 
+		HistStructureFactor(2 * 3.14159265359 / model.boxl, int (1 / 2 * 3.14159265359 / model.boxl));	// histogram info - bin width, bin number
+	std::vector<double> OrderParameter(HistOrderParameter.num_bins), PairCorrelation(HistRDF.num_bins), PairCorrelationCenter(HistRDF.num_bins), 
+		StructureFactor(HistStructureFactor.num_bins), TrigonalOrderParameter(HistX3.num_bins);	// histogram data 
 	std::vector<int> Rotators(200), Translators(200);
-	int Microscopy_Configurations = 5001;
+	int Microscopy_Configurations = 5002;
 	std::vector<std::vector<Point>> Microscopy_CenterOfMass(Microscopy_Configurations, std::vector<Point>(200)), Microscopy_Orientation(Microscopy_Configurations, std::vector<Point>(200));
 	double OrientationMagnitude = 0.0;
 	for (int n = 0; n < model.num_cfgs; n++) {
+		//if (n >= 50000) continue;	//note that I am limiting # configurations for time reasons
 		if (n % 1000 == 1) std::cout << n << '\n';
 		std::vector<std::vector<Point>> Positions = GetConfiguration(model);
-		//WriteConfiguration(model, Positions, std::cout); // don't write yet
-		if (n == 0) OrientationMagnitude = Positions[0][2].dist_sq(Positions[0][1]);	//grab orientation vector's magnitude, but only once.
+		//if (n == 0) OrientationMagnitude = Positions[0][2].dist_sq(Positions[0][1]);	//grab orientation vector's magnitude, but only once.
 		//int bin = int(CalculateS(model, OrientationMagnitude, Positions) / HistOrderParameter.bin_width);
 		//OrderParameter[bin] += 1;
 		//radial_df(model, Positions, HistRDF, PairCorrelation);
-		if (n < Microscopy_Configurations) {	// for 5001 configurations, see who is rotating and who is translating. 
+		//specific_radial_df(model, Positions, HistRDF, PairCorrelationCenter, 0);
+		//
+		//int bin = int(CalculateX3(model, OrientationMagnitude, Positions) / HistX3.bin_width);
+		//TrigonalOrderParameter[bin] += 1;
+		compute_structure_factor(model, Positions, HistStructureFactor, StructureFactor);
+		//
+		/*if (n < Microscopy_Configurations) {	// for 5002 configurations, see who is rotating and who is translating. Need n+2 configurations to measure n velocities
 			for (int i = 0; i < model.N; i++) {
 				Point Cm_i = (Positions[i][2] + Positions[i][1] + Positions[i][0]) / 3.0;
 				Point Orientation_i = (Positions[i][2] - Positions[i][1]);
@@ -71,10 +84,13 @@ int main() {
 		if (n >= 10000 && n < 20000 && n % 10 == 0) {
 			VideoMicroscopy(model, "Microscopy", Positions, tag, Rotators, Translators); // get 1000 cfgs spaced 10 * time_betw_cfgs apart.
 		}
-		if (n > 20000) return 0;
+		if (n > 20000) return 0;*/
 	}
+	//PrintHistogram(model, HistX3, OutputFiles[0], TrigonalOrderParameter, "prob_density");
 	//PrintHistogram(model, HistOrderParameter, OutputFiles[0], OrderParameter, "prob_density");
-	//PrintHistogram(model, HistRDF, OutputFiles[1], PairCorrelation, "histogram");
+	//PrintHistogram(model, HistRDF, OutputFiles[3], PairCorrelation, "histogram");
+	//PrintHistogram(model, HistRDF, OutputFiles[4], PairCorrelationCenter, "histogram");	//Center refers to center atom, not center of mass
+	PrintHistogram(model, HistStructureFactor, OutputFiles[0], StructureFactor, "histogram");
 	return 0;
 }
 
@@ -108,10 +124,11 @@ std::ifstream& GotoLine(std::ifstream& file, unsigned int num) {//skip to a cert
 }
 
 InputParameter ReadInput(std::string &tag) { // construct with all the input parameters
-	char* taskID_string;
+	/*char* taskID_string;
 	taskID_string = getenv("SGE_TASK_ID");
 	std::string task_id = taskID_string;
-	tag = task_id;
+	tag = task_id;*/
+	tag = "49";
 	std::ifstream myfile("inputfiles/input.data"); // read parameters from this file
 												   //tag = "1";
 	GotoLine(myfile, std::stoi(tag));	//skip to tagged line
@@ -146,6 +163,28 @@ double CalculateS(SimulationParameters &model, double &NormalizationSq, std::vec
 	s = sqrt(Q1 * Q1 + Q2 * Q2) / model.N;
 	return s;
 }
+
+double CalculateX3(SimulationParameters &model, double &NormalizationSq, std::vector<std::vector<Point>> &PositionVector) {	//take a configuration and calculate the "orientational order parameter" see Zhou, Stratt 2018
+	double X3 = 0;
+	for (int j = 0; j < model.N; j++) {
+		Point OmegaJ = (PositionVector[j][2] - PositionVector[j][1]);
+		OmegaJ = OmegaJ / sqrt(OmegaJ.dot(OmegaJ));
+		for (int k = 0; k < model.N; k++) {
+			Point OmegaK = PositionVector[k][2] - PositionVector[k][1];
+			OmegaK = OmegaK / sqrt(OmegaK.dot(OmegaK));
+			double c = OmegaJ.dot(OmegaK); // ;
+			//double value = 4 * pow(c, 3) - 3 * c; // cos (3*theta)
+			double c2 = c*c;
+			double c4 = c2*c2;
+			double value = 4 * (8 * c4*c2 - 12 * c4 + 6 * c2 - 1) - 6 * c2 + 3;
+			//std::cout << value << '\n';
+			X3 += value;
+		}
+	}
+	X3 /= pow(model.N, 2);
+	return X3;
+}
+
 
 void PrintHistogram(SimulationParameters &model, HistogramInfo &hist, std::string filename, std::vector<double> &data, std::string mode) {
 	std::ofstream ofs(filename, std::ios_base::app);
@@ -186,6 +225,33 @@ void radial_df(SimulationParameters &model, std::vector<std::vector<Point>> &Pos
 	}
 }
 
+void specific_radial_df(SimulationParameters &model, std::vector<std::vector<Point>> &PositionVector, HistogramInfo &hist, std::vector<double> &rdf, int which_atom) {	// atom-atom g(r). function takes in Positions and fills out a vector of doubles
+	const double constant = 3.14159265 * model.density;
+	double rlower, rupper, nideal, rij;
+	int atom_index = which_atom;
+	std::vector<double> histo(hist.num_bins);
+	int bin;
+	for (int j = 0; j < model.N - 1; j++) {				//loop over all distinct molecule pairs j,k
+		for (int k = j + 1; k < model.N; k++) {
+			Point r_jakb = PositionVector[j][atom_index] - PositionVector[k][atom_index]; //calculate pair separation between similar atoms
+			r_jakb = r_jakb.pbc(model.boxl, model.invboxl);	// fold the pair separation to get the minimum image separation
+			rij = sqrt(r_jakb.dot(r_jakb));
+			bin = int(rij / hist.bin_width);
+			// bin should not be zero. if so, either exactly overlapping molecules or issue with indexing somewhere.
+			if (bin < hist.num_bins) {	// make sure we only count particles out as far as some maximum (set to be half the box length)
+				histo[bin] += 2;		// if rij falls within the range of the bin, count two particles (i and j)
+			}
+		}
+	}
+	for (bin = 0; bin < hist.num_bins; bin++) {
+		rlower = bin * hist.bin_width;
+		rupper = rlower + hist.bin_width;
+		nideal = constant * (rupper * rupper - rlower * rlower);
+		rdf[bin] += double(histo[bin]) / model.N / nideal;
+	}
+}
+
+
 std::vector<std::string> FoldersToFiles(SimulationParameters &model, std::vector<std::string> &stringvector, std::string tag) {
 	// Make the specified Folders, then turn them into their respective Folder/$task_id.data, then print a header (density, temperature) for plotting ease
 	std::vector<std::string> vectorstring;
@@ -199,7 +265,7 @@ std::vector<std::string> FoldersToFiles(SimulationParameters &model, std::vector
 	return vectorstring;
 }
 
-void VideoMicroscopy(SimulationParameters &model, std::string filename, std::vector<std::vector<Point>> &PositionVector, std::string tag, 
+void VideoMicroscopy(SimulationParameters &model, std::string filename, std::vector<std::vector<Point>> &PositionVector, std::string tag,
 	std::vector<int> &Rotators, std::vector<int> &Translators) {	//print configuration with minimum images and molecule labels
 	filename = filename + "/" + tag + ".data";
 	std::ofstream ofs(filename, std::ios_base::app);
@@ -224,24 +290,24 @@ double BottomTenPercent(std::vector<double> VectorToSort) {
 	return VectorToSort[TenthPercentile];
 }
 
-void LabelRotatorsAndTranslators(SimulationParameters &model, std::vector<std::vector<Point>> &Microscopy_CenterOfMass, std::vector<std::vector<Point>> &Microscopy_Orientation, 
+void LabelRotatorsAndTranslators(SimulationParameters &model, std::vector<std::vector<Point>> &Microscopy_CenterOfMass, std::vector<std::vector<Point>> &Microscopy_Orientation,
 	std::vector<int> &Rotators, std::vector<int> &Translators, double &OrientationMagnitude, int &Microscopy_Configurations, std::string tag) {
 	int NumberOfConfigurations = Microscopy_Configurations - 1;
 	std::vector<double> rotator_displacement(200), translator_displacement(200);
 	for (int k = 0; k < NumberOfConfigurations; k++) {
-		for (int i = 0; i < model.N; i++) {
-			double cm_displacement = (Microscopy_CenterOfMass[k][i].dist(Microscopy_CenterOfMass[k + 1][i]));	// magnitude of displacement (not quite a correlation function)
-			double angular_displacement_temporary = fabs(acos(Microscopy_Orientation[k][i].dot(Microscopy_Orientation[k + 1][i])));
-			double orientation_displacement = (fabs(angular_displacement_temporary) < 0.9999 ? angular_displacement_temporary : 0.0);	// magnitude of angular displacement (not quite a correlation function)
+		for (int i = 0; i < model.N; i++) {	//recover angular, cm velocity using finite difference (2-step)
+			double cm_displacement = (Microscopy_CenterOfMass[k][i].dist(Microscopy_CenterOfMass[k + 2][i]));
+			double angular_displacement_temporary = fabs(acos(Microscopy_Orientation[k][i].dot(Microscopy_Orientation[k + 2][i])));
+			double orientation_displacement = (fabs(angular_displacement_temporary) < 0.9999 ? angular_displacement_temporary : 0.0);
 			translator_displacement[i] += cm_displacement;
 			rotator_displacement[i] += orientation_displacement;
 		}
 	}
 	for (auto &i : rotator_displacement) {
-		i /= (NumberOfConfigurations * model.steps_between_cfgs * model.timestep);
+		i /= (2 * NumberOfConfigurations * model.steps_between_cfgs * model.timestep);	// 2 since finite difference is over 2 steps
 	}
 	for (auto &i : translator_displacement) {
-		i /= (NumberOfConfigurations * model.steps_between_cfgs * model.timestep);
+		i /= (2 * NumberOfConfigurations * model.steps_between_cfgs * model.timestep);
 	}
 	int HistogramNumBins = 20;
 	RoughHistogram(rotator_displacement, HistogramNumBins, "Microscopy/Rotators/" + tag + ".data");
@@ -253,11 +319,11 @@ void LabelRotatorsAndTranslators(SimulationParameters &model, std::vector<std::v
 	for (std::vector<int>::size_type i = 0; i < rotator_displacement.size(); i++) {
 		double translation = translator_displacement[i];
 		double rotation = rotator_displacement[i];
-		if (translation > FastTranslation) Translators[i] = 10;	// use parula, palette in gnuplot
-		else if (translation < SlowTranslation) Translators[i] = 5;
-		else Translators[i] = 1;
-		if (rotation > FastRotation) Rotators[i] = 1;	// plot w circles starting from 0 degrees to 360 - 45*(integer) degrees. So fast molecules are small mouth pac-men, slow ones are large mouth pac men
-		else if (rotation < SlowRotation) Rotators[i] = 2;
+		if (translation >= FastTranslation) Translators[i] = 2;	// 2 is fast, 1 is slow, 0 is normal
+		else if (translation < SlowTranslation) Translators[i] = 1;
+		else Translators[i] = 0;
+		if (rotation >= FastRotation) Rotators[i] = 2;
+		else if (rotation < SlowRotation) Rotators[i] = 1;
 		else Rotators[i] = 0;
 	}
 }
@@ -275,5 +341,40 @@ void RoughHistogram(std::vector<double> &data, int &NumberOfBins, std::string fi
 	for (int bin = 0; bin < num_bins; bin++) {
 		double binvalue = double(bin) * bin_width;	// when the value is calculated (elsewhere), it is counted into the bin associated with the value after truncation. So this prints the bin's count as well as the bin's value.
 		ofs << binvalue << '\t' << count[bin] << '\n';
+	}
+}
+
+void compute_structure_factor(SimulationParameters &model, std::vector<std::vector<Point>> &PositionVector, HistogramInfo &hist, std::vector<double> &sq) {
+	int NumberOfWaveVectorsPerDirection = 25;
+	int NumberOfWaveVectors = pow(NumberOfWaveVectorsPerDirection, 2);
+	std::vector<Point> WaveVectors;
+	for (int i = 0; i < NumberOfWaveVectorsPerDirection; i++) {
+		for (int a = 0; a < NumberOfWaveVectorsPerDirection; a++) {
+			Point point(i, a);
+			WaveVectors.push_back(point);	// build up a list of wavevectors consisting of integer pairs from 0 to NumberOfWaveVectorsPerDirection
+		}
+	}
+	std::vector<double> histo(hist.num_bins);
+	int bin;
+	for (int k = 0; k < NumberOfWaveVectors; k++) {
+		double c = 0, s = 0;				// cosine and sine
+		for (int i = 0; i < model.N; i++) {	// loop over all distinct molecule pairs j,k
+			for (int a = 0; a < model.NA; a++) {
+				Point r_ia = PositionVector[i][a].pbc(model.boxl, model.invboxl);	// get folded position of atom
+				double kr = WaveVectors[k].dot(r_ia);
+				c += cos(kr);
+				s += sin(kr);
+			}
+		}
+		c = c*c;
+		s = s*s;
+		double k_magnitude = sqrt(WaveVectors[k].dot(WaveVectors[k]));	// compute magnitude of wavevector
+		bin = int(k_magnitude / hist.bin_width);
+		if (bin < hist.num_bins) {	// don't bin anything past the max(domain)
+			histo[bin] += 1;		// count how many wavevectors fall in the wavevector bin from (k, k + dk)
+		}
+	}
+	for (int bin = 0; bin < hist.num_bins; bin++) {
+		sq[bin] += double(histo[bin]) / (model.N * model.NA);
 	}
 }
