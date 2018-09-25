@@ -13,24 +13,8 @@
 #include "headers/FnDeclarations.h"
 #include "headers/ParameterClass.h" // store all the input parameters
 #include "unistd.h"		//a POSIX API - getopt
-#include <tuple>
-//
-#include <stack>
-#include <ctime>
+#include "headers/Point.h" //Points
 
-std::stack<clock_t> tictoc_stack;
-
-void tic() {
-	tictoc_stack.push(clock());
-}
-
-void toc() {
-	std::cout << "Time elapsed: "
-		<< ((double)(clock() - tictoc_stack.top())) / CLOCKS_PER_SEC
-		<< std::endl;
-	tictoc_stack.pop();
-}
-//
 //***********************************7/27/18**********************************
 //NA = 3, NB = 3 -> rigid nonlinear triatomic molecule.
 //Held bonds fixed using RATTLE algorithm, solving equations of motion while using (linear approx. of) constraint forces to keep bond length constraints rigid
@@ -39,7 +23,7 @@ void toc() {
 // 8/9/18 Just refactored the program - size cut from 1100 lines to 653. Introduced a few objects, halved the number of global variables. TODO: Decouple the functions, get rid of more global variables.
 //SHAKE, RATTLE have degenerate solutions for 180 degree bond angles, so linear molecules consisting of 3 or more atoms cannot be handled.
 
-const int n = 10;									//2n^2 atoms
+const int n = 100;									//2n^2 atoms
 const int N = 2 * n * n;							//# molecules in simulation
 const int NA = 3;									//# atoms per molecule
 const int NB = 3;									//# bonds per molecule
@@ -53,8 +37,12 @@ const double tol = 1.0e-7;							//RATTLE algorithm tolerances - 1.0e-10 worked 
 double timekeeping = 0;
 double rx[N][NA], ry[N][NA], vx[N][NA], vy[N][NA];
 double fx[N][NA], fy[N][NA];
-double V, K, VC;							//Potential, Kinetic, Shifted Force Potential energies
+double V, K, VC;									//Potential, Kinetic, Shifted Force Potential energies
 std::string tag = "FailedToAssignTag";
+bool firstcall = 1;
+std::vector<int> seek(N*NA + 1);					// when seek is only sized as N*NA, odd number of particles => segfault. This handles both odds and evens.
+std::vector<int> list;
+std::vector<double> Rx_save(N*NA), Ry_save(N*NA);
 
 int main(int argc, char ** argv) {
 	//std::ios::sync_with_stdio(false);	// speed up C++ I/O by disabling C I/O. DISABLES PIPING WITH STDOUT AND STDIN!
@@ -82,7 +70,7 @@ int main(int argc, char ** argv) {
 			AssignInitialConditions(parameter, 0.5);	// start hotter than intended - allow minor annealing
 			TargetTemperature(parameter.temperature, dsq);	// cool to desired temperature
 			int NumConfigs = parameter.NumConfigs;	//#of saved configurations. # configurations * skiptime + waiting time = total run length.
-			int skiptime = 10;	//skip this many time steps between configurations
+			int skiptime = 100;	//skip this many time steps between configurations
 			run_for(3000, dsq);	//pass most relaxation times
 			std::vector<double> PositionX, PositionY;
 			double PE = 0.0;
@@ -223,25 +211,28 @@ void InputGen() {		//create a bunch of input files in subdirectory "inputfiles",
 	//linecount -> bond angle -> density -> temperature -> #configurations -> N -> path/to/MeltedConfiguration
 	std::vector<int> BondAngle = {75};
 	std::vector<double>densityIn = { 0.25 }, temperatureIn = { 0.65, 0.6, 0.55, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2 };
+	std::vector<int>NumMolIn = {200, 1800, 20000};
 	int NumConfigs = 3 * 100000;
 	mkdir("Trajectory", ACCESSPERMS);
 	mkdir("inputfiles", ACCESSPERMS);
 	std::ofstream inputstream("inputfiles/input.data");
 	int linenumber = 1;	
-	for (std::vector<int>::size_type i = 0; i < BondAngle.size(); i++) {
-		std::string angleout_filename = "Trajectory/" + std::to_string(BondAngle[i]) + "degrees";
-		mkdir(angleout_filename.c_str(), ACCESSPERMS);
-		for (std::vector<int>::size_type j = 0; j < densityIn.size() ; j++) {
-			for (std::vector<int>::size_type k = 0; k < temperatureIn.size(); k++) {
-				std::string angle_filename = "MeltedConfiguration/" + std::to_string(BondAngle[i]) + "degrees";	// MeltedConfiguration/75degrees/
-				mkdir("MeltedConfiguration", ACCESSPERMS);
-				mkdir(angle_filename.c_str(), ACCESSPERMS);
-				std::string N_filename = "N" + std::to_string(N);
-				mkdir((angle_filename + "/" + N_filename).c_str(), ACCESSPERMS);
-				std::string density_filename = std::to_string(densityIn[j]);
-				mkdir((angle_filename + "/" + N_filename + "/").c_str(), ACCESSPERMS);
-				inputstream << linenumber << '\t' << BondAngle[i] << '\t' << densityIn[j] << '\t' << temperatureIn[k] << '\t' << NumConfigs << '\t' << N << '\t' << angle_filename + "/" + N_filename + "/" + density_filename + ".data\n";
-				linenumber++;
+	for (std::vector<int>::size_type h = 0; h < NumMolIn.size(); h++) {
+		for (std::vector<int>::size_type i = 0; i < BondAngle.size(); i++) {
+			std::string angleout_filename = "Trajectory/" + std::to_string(BondAngle[i]) + "degrees";
+			mkdir(angleout_filename.c_str(), ACCESSPERMS);
+			for (std::vector<int>::size_type j = 0; j < densityIn.size(); j++) {
+				for (std::vector<int>::size_type k = 0; k < temperatureIn.size(); k++) {
+					std::string angle_filename = "MeltedConfiguration/" + std::to_string(BondAngle[i]) + "degrees";	// MeltedConfiguration/75degrees/
+					mkdir("MeltedConfiguration", ACCESSPERMS);
+					mkdir(angle_filename.c_str(), ACCESSPERMS);
+					std::string N_filename = "N" + std::to_string(NumMolIn[h]);
+					mkdir((angle_filename + "/" + N_filename).c_str(), ACCESSPERMS);
+					std::string density_filename = std::to_string(densityIn[j]);
+					mkdir((angle_filename + "/" + N_filename + "/").c_str(), ACCESSPERMS);
+					inputstream << linenumber << '\t' << BondAngle[i] << '\t' << densityIn[j] << '\t' << temperatureIn[k] << '\t' << NumConfigs << '\t' << NumMolIn[h] << '\t' << angle_filename + "/" + N_filename + "/" + density_filename + ".data\n";
+					linenumber++;
+				}
 			}
 		}
 	}
@@ -252,26 +243,20 @@ void GenerateMeltedConfiguration(InputParameter &Parameters, BondConstraints &Bo
 	std::vector<double> dsq = BondLengths.dsq();
 	InitialPositions(Parameters.BondAngle, BondLengths);
 	InitialVelocities(AnnealTemperature);
-	tic();
 	run_for(10, dsq);
-	toc();
-	std::cout << "packing\n";
 	pack(Parameters.density, dsq);
 	double NewTemperature = Parameters.temperature + 0.1;
-	std::cout << "cooling\n";
 	cool_past(NewTemperature, dsq);
-	std::cout << "at second run_for\n";
 	run_for(100, dsq);
 	PrintPositions(Parameters.MeltCfg, "No");	// don't apply pbc while printing, pbc is only used to calculate forces or print human-readable configurations
 }
 
 InputParameter ReadInput() { // construct with all the input parameters
-	/*char* taskID_string;
+	char* taskID_string;
 	taskID_string = getenv("SGE_TASK_ID");
 	std::string task_id = taskID_string;
-	tag = task_id;*/
+	tag = task_id;
 	std::ifstream myfile("inputfiles/input.data"); // read parameters from this file
-	tag = "1";
 	GotoLine(myfile, std::stoi(tag));	//skip to tagged line
 	int linenum, numcfg, NumMol;
 	double bondangle, density, temperature;
@@ -397,7 +382,57 @@ void InitialVelocities(double InitialTemperature) {				//initialize velocities
 	}
 }
 
-/*void computeForces() {								//input _ output _
+void make_verlet_list(std::vector<double> &Rx, std::vector<double> &Ry, std::vector<double> &Rx_save, std::vector<double> &Ry_save, bool &first_call, std::vector<int> &list, std::vector<int> &seek) {
+	double r_list = 3.0;
+	double r_skin = r_list - 2.5;
+	double r_skin_sq = r_skin * r_skin;
+	double r_list_sq = r_list * r_list;
+	//pass in first_call somehow, initialized at beginning of run as true
+	//pass in empty vector Rx_save, Ry_save
+	if (!first_call) {
+		std::vector<Point> dr;
+		double compare = 0.0;
+		for (std::vector<int>::size_type i = 0; i < Rx.size(); i++) {
+			Point r(Rx[i], Ry[i]);
+			Point rsave(Rx_save[i], Ry_save[i]);
+			Point difference = r - rsave;
+			difference = difference.pbc(boxl, boxinv);
+			double diffsq = difference.dot(difference);
+			if (diffsq > compare) compare = diffsq;	// compare picks out the squared maximum displacement
+		}
+		if (4.0*compare < r_skin_sq) {
+			return;	// no need to update list
+		}
+	}
+	first_call = false;
+	std::vector<int>().swap(list);
+	int k = 0;
+	r_list_sq = r_list * r_list;
+	for (int i = 0; i < N*NA - 1; i++) {
+		seek[i] = k;	//seek holds address of index in list
+		for (int j = i + 1; j < N*NA; j++) {
+			double Rx_ij = Rx[i] - Rx[j];
+			double Ry_ij = Ry[i] - Ry[j];
+			Point rij(Rx_ij, Ry_ij);
+			rij = rij.pbc(boxl, boxinv);
+			double Rij_sq = rij.dot(rij);
+			if (Rij_sq < r_list_sq) {	// if j within cutoff + skin of i
+				if (k >= int(list.size())) {
+					list.push_back(j);
+				}
+				else list[k] = j;	//list holds atomic indices - tell list to hold index of j at its k-th location.
+				k++;
+			}
+		}
+	}
+	seek[N*NA - 1] = k;
+	for (std::vector<int>::size_type i = 0; i < Rx.size(); i++) {
+		Rx_save[i] = Rx[i];
+		Ry_save[i] = Ry[i];
+	}
+}
+
+void computeForces() {	//uses neighbor list
 	double rx_jakb, ry_jakb, r2, r6, r12, v_jakb, f_jakb, rxja, ryja;
 	int ncut;										//counts how many rsq < rcutsq
 	double fx_jakb, fy_jakb, fxj, fyj;
@@ -407,6 +442,24 @@ void InitialVelocities(double InitialTemperature) {				//initialize velocities
 	const double rc2 = 1 / rcutsq;
 	const double rc6 = rc2 * rc2 * rc2;
 	const double rc12 = rc6 * rc6;
+	std::vector<double> Rx, Ry;
+	for (int i = 0; i < N; i++) {	// flatten out N by NA array into N*NA long string to use linked lists
+		for (int a = 0; a < NA; a++) {
+			Rx.push_back(rx[i][a]);
+			Ry.push_back(ry[i][a]);
+		}
+	}
+	for (auto &i : Rx) {
+		i -= static_cast<int>(i * boxinv + ((i >= 0.0) ? 0.5 : -0.5)) * boxl;
+	}
+	for (auto &i : Ry) {	//apply periodic boundary conditions to the temporary positions
+		i -= static_cast<int>(i * boxinv + ((i >= 0.0) ? 0.5 : -0.5)) * boxl;
+	}
+	assert(!std::isnan(Rx[598]));
+	for (auto & i : Rx) {
+		assert(!std::isnan(i));
+	}
+	make_verlet_list(Rx, Ry, Rx_save, Ry_save, firstcall, list, seek);
 	for (int i = 0; i < N; i++) {
 		for (int a = 0; a < NA; a++) {
 			fx[i][a] = 0;							//zero atomic forces
@@ -415,40 +468,49 @@ void InitialVelocities(double InitialTemperature) {				//initialize velocities
 	}
 	V = 0.0;										//zero potential
 	ncut = 0;
-	for (int j = 0; j < N - 1; j++) {				//loop over all distinct atom pairs excluding those in same molecule
-		for (int k = j + 1; k < N; k++) {
-			for (int a = 0; a < NA; a++) {
-				rxja = rx[j][a];
-				ryja = ry[j][a];
-				fxj = fx[j][a];
-				fyj = fy[j][a];
-				for (int b = 0; b < NA; b++) {
-					rx_jakb = rxja - rx[k][b];	//pair separations
-					ry_jakb = ryja - ry[k][b];
-					rx_jakb -= static_cast<int>(rx_jakb * boxinv + ((rx_jakb >= 0.0) ? 0.5 : -0.5)) * boxl;	//minimum image algorithm, "efficient coding of the minimum image convention" by U K Deiters
-					ry_jakb -= static_cast<int>(ry_jakb * boxinv + ((ry_jakb >= 0.0) ? 0.5 : -0.5)) * boxl;	//if ryij is more than half of the box length, minimum image vector then maps to an image particle **
-					rsq = rx_jakb * rx_jakb + ry_jakb * ry_jakb;
-					//assert(rsq != 0);
-					if (rsq > rcutsq) continue;			//if minimum image sqd is larger than cutoff distance squared, skip interactions
-					double r = sqrt(rsq);
-					r2 = 1 / rsq;						//r^2, r^6, r^12
-					r6 = r2 * r2 * r2;
-					r12 = r6 * r6;
-					v_jakb = r12 - r6;					
-					V += v_jakb + (12 * rc12 - 6 * rc6) * (r / rcut - 1);
-					f_jakb = (r12 + v_jakb) / rsq;		//main term of the force routine, (2r^-12 - r^-6)/r^2
-					f_jakb -= (2 * rc12 - rc6) / (rcut * r);
-					fx_jakb = f_jakb * rx_jakb;
-					fy_jakb = f_jakb * ry_jakb;
-					fxj += fx_jakb;						//accumulate forces
-					fyj += fy_jakb;
-					fx[k][b] -= fx_jakb;				//Newton's 3rd law, shown by r(2->1) = - r(1->2)
-					fy[k][b] -= fy_jakb;
-					ncut += 1;
-				}
-				fx[j][a] = fxj;
-				fy[j][a] = fyj;
+	for (int j = 0; j < N; j++) {				//loop over all distinct atom pairs excluding those in same molecule
+		for (int a = 0; a < NA; a++) {
+			rxja = rx[j][a];
+			ryja = ry[j][a];
+			fxj = fx[j][a];
+			fyj = fy[j][a];
+			int flattened_index = 3 * j + a;
+			int offset = 0;
+			if (flattened_index % 3 == 0) offset = 2;		// skip over 2 intramolecular atoms (all intramolecular atoms down the neighbor list)
+			else if (flattened_index % 3 == 1) offset = 1;	// skip over 1 intramolecular atom	(all intramolecular atoms down the neighbor list)
+			else if (flattened_index % 3 == 2) offset = 0;	// no intramolecular atoms to skip
+			else assert(true);
+			for (int p = seek[flattened_index] + offset; p < seek[flattened_index + 1]; p++) {	//seek holds address of index in list
+				int k = list[p];	//list holds atomic indices
+				int atom_index = k % 3;
+				int molecule_index = int(k / 3);
+				rx_jakb = rxja - rx[molecule_index][atom_index];	//pair separations
+				ry_jakb = ryja - ry[molecule_index][atom_index];
+				rx_jakb -= static_cast<int>(rx_jakb * boxinv + ((rx_jakb >= 0.0) ? 0.5 : -0.5)) * boxl;	//minimum image algorithm, "efficient coding of the minimum image convention" by U K Deiters
+				ry_jakb -= static_cast<int>(ry_jakb * boxinv + ((ry_jakb >= 0.0) ? 0.5 : -0.5)) * boxl;	//if ryij is more than half of the box length, minimum image vector then maps to an image particle **
+																										//std::cout << rx_jakb << '\t' << ry_jakb << '\n';
+				rsq = rx_jakb * rx_jakb + ry_jakb * ry_jakb;
+				//assert(rsq != 0);	
+				if (rsq > rcutsq) continue;			//if minimum image sqd is larger than cutoff distance squared, skip interactions
+													//std::cout << "passed\n";
+				double r = sqrt(rsq);
+				r2 = 1 / rsq;						//r^2, r^6, r^12
+				r6 = r2 * r2 * r2;
+				r12 = r6 * r6;
+				v_jakb = r12 - r6;
+				V += v_jakb + (12 * rc12 - 6 * rc6) * (r / rcut - 1);
+				f_jakb = (r12 + v_jakb) / rsq;		//main term of the force routine, (2r^-12 - r^-6)/r^2
+				f_jakb -= (2 * rc12 - rc6) / (rcut * r);
+				fx_jakb = f_jakb * rx_jakb;
+				fy_jakb = f_jakb * ry_jakb;
+				fxj += fx_jakb;						//accumulate forces
+				fyj += fy_jakb;
+				fx[molecule_index][atom_index] -= fx_jakb;				//Newton's 3rd law, shown by r(2->1) = - r(1->2)
+				fy[molecule_index][atom_index] -= fy_jakb;
+				ncut += 1;
 			}
+			fx[j][a] = fxj;
+			fy[j][a] = fyj;
 		}
 	}
 	v_jakb = rc12 - rc6;
@@ -461,199 +523,6 @@ void InitialVelocities(double InitialTemperature) {				//initialize velocities
 	}
 	V *= 4.0;
 	VC *= 4.0;
-}*/
-
-std::tuple < std::vector<int>, std::vector<std::vector<int>>, std::vector<std::vector<int>>, int > initialize_list(double &rcut) {
-	double rc_box = rcut * boxinv;	// rcut / boxlength
-	int sc = floor(1.0 / rc_box); // number of cells in each direction
-	assert(sc >= 3);
-	std::vector<int> list(N*NA);
-	std::vector<std::vector<int>> cell_index(2, std::vector<int>(N*NA));	// 2-D cell index for each atom
-	std::vector<std::vector<int>> head(sc, std::vector<int>(sc));	// head has one dimension per cell
-	return std::make_tuple(list, cell_index, head, sc);
-}
-
-void make_list(std::vector<std::vector<int>> &head, std::vector<std::vector<int>> &cell_index, std::vector<double> &Rx, std::vector<double> &Ry, int &sc, std::vector<int> &list) {
-	//std::vector<int>().swap(head); //empty head, use if I want to push_back every time
-	//head.clear();
-	for (int i = 0; i < N*NA; i++) {
-		cell_index[0][i] = c_index(Rx[i], sc);
-		cell_index[1][i] = c_index(Ry[i], sc);
-		create_in_list(i, cell_index[0][i], cell_index[1][i], list, cell_index, head);
-	}
-}
-
-int c_index(double position, int &sc) {	//take in a position **BY VALUE!!** , return the corresponding cell number 
-	position -= static_cast<int>(position * boxinv + ((position >= 0.0) ? 0.5 : -0.5)) * boxl;
-	assert(abs(position) < boxl2); // check if in box
-	position /= boxl; //in units of box length
-	int ci = floor((position + 0.5) * double(sc));	// identify which box the atom is in
-													//std::cout << ci << '\n';
-													//guard against roundoff errors
-	if (ci < 0) ci = 0;
-	if (ci > sc - 1) ci = sc - 1;
-	return ci;
-}
-
-void create_in_list(int &i, int &ci_x, int &ci_y, std::vector<int> &list, std::vector<std::vector<int>> &cell_index, std::vector<std::vector<int>> &head) {
-	list[i] = head[ci_x][ci_y];	// transfer the cell indices from old head to list
-	head[ci_x][ci_y] = i;	// atom i becomes the new head for this list
-	cell_index[0][i] = ci_x;	// store the cell index - NOTE from Andrew: Isn't this redundant? It's in Allen and Tildesley so I'll let it stay for now
-	cell_index[1][i] = ci_y;
-}
-
-int modulo(int x, int N) {
-	return (x % N + N) % N;
-}
-
-void computeForces() {
-	double r2, r6, r12, v_jakb, f_jakb, rxi, ryi, fxi, fyi;
-	int ncut;									//counts how many rsq < rcutsq
-	double fx_jakb, fy_jakb;
-	double rcut = 2.5;							//force truncation cut off radius, 2.5*sigma by convention
-	const double rcutsq = rcut * rcut;
-	const double rc2 = 1 / rcutsq;
-	const double rc6 = rc2 * rc2 * rc2;
-	const double rc12 = rc6 * rc6;
-	int ci_x, ci_y;
-	const int nk = 4;	// half the number of neighbor cells
-	int j;
-	std::vector<double> Fx(N*NA), Fy(N*NA);
-	std::vector<std::vector<int>> d(2, std::vector<int>(5));	// second index labels which neighbor. For example: if neighbor 1, then shift neighbor cell index right one, up zero.
-	d[0][0] = 0; d[1][0] = 0;
-	d[0][1] = 1; d[1][1] = 0;
-	d[0][2] = 1; d[1][2] = 1;
-	d[0][3] = 1; d[1][3] = -1;
-	d[0][4] = 0; d[1][4] = 1;
-	auto list_parameters = initialize_list(rcut);
-	std::vector<int> list = std::get<0>(list_parameters);
-	std::vector<std::vector<int>> cell_index = std::get<1>(list_parameters);	// 2-D cell index for each atom
-	std::vector<std::vector<int>> head = std::get<2>(list_parameters);	// head has one dimension per cell
-	int sc = std::get<3>(list_parameters);	// number of neighbor cells in a given direction
-	std::vector<double> Rx, Ry;
-	for (int i = 0; i < N; i++) {	// flatten out N by NA array into N*NA long string to use linked lists
-		for (int a = 0; a < NA; a++) {
-			Rx.push_back(rx[i][a]);
-			Ry.push_back(ry[i][a]);
-		}
-	}
-	make_list(head, cell_index, Rx, Ry, sc, list);
-	for (auto &row : head) {
-		for (auto &col : row) {
-			std::cout << col << '\n';
-		}
-	}
-	for (int i = 0; i < N; i++) {
-		for (int a = 0; a < NA; a++) {
-			fx[i][a] = 0;							//zero atomic forces
-			fy[i][a] = 0;
-		}
-	}
-	for (int i = 0; i < N; i++) {	// flatten out N by NA array into N*NA long string to use linked lists
-		for (int a = 0; a < NA; a++) {
-			Fx.push_back(fx[i][a]);
-			Fy.push_back(fy[i][a]);
-		}
-	}
-	V = 0.0;										//zero potential
-	ncut = 0;
-	for (int ci1 = 0; ci1 < sc; ci1++) {	//loop over cells
-		for (int ci2 = 0; ci2 < sc; ci2++) {
-			//std::cout << "inner loop \n";
-			ci_x = ci1;
-			ci_y = ci2;
-			int i = head[ci_x][ci_y];
-			while (i != 0) {	//begin looping over i-atom
-				rxi = Rx[i];	
-				ryi = Ry[i];
-				fxi = Fx[i];
-				fyi = Fy[i];
-				for (int k = 0; k < nk; k++) { // begin looping over neighbor cells k
-					//identify the j-atom
-					if (k == 0) {
-						j = list[i];	//first j-atom is downlist from i in current cell
-					}
-					else {
-						//std::cout << sc << '\n';
-						int cj_x = ci_x + d[0][k+1];	//neighbor j-cell index
-						int cj_y = ci_y + d[1][k+1];
-						//std::cout << "unmod " << cj_x << '\t' << cj_y << '\n';	
-						//cj_x = cj_x % sc;
-						//cj_y = cj_y % sc;				//periodic boundary correction
-						cj_x = modulo(cj_x, sc);
-						cj_y = modulo(cj_y, sc);
-						//std::cout << "mod " << cj_x << '\t' << cj_y << '\n';
-						j = head[cj_x][cj_y];			//first j-atom in neighbor cell
-					}
-					while (j != 0) {
-						assert(j != i);
-						if (i % 3 == 0 && (j == i + 1 || j == i + 2)) {
-							//j = list[j];
-							break; 	//don't interact with j = i+1, j = i+2 (atoms in same molecule)
-						}
-						if (i % 3 == 1 && (j == i - 1 || j == i + 1)) {
-							//j = list[j];
-							break;	//dont interact with j = i-1, j = i+1
-						}
-						if (i % 3 == 2 && (j == i - 2 || j == i - 1)) {
-							//j = list[j];
-							break;	//don't interact with j = i-2, j= i-1
-						}
-																				// made sure that j-th atom is not the i-th atom, and the j-th atom is in a different molecule than the i-th atom
-						double Rij_x = rxi - Rx[j];	// pair separations between i and j
-						double Rij_y = ryi - Ry[j];
-						Rij_x -= static_cast<int>(Rij_x * boxinv + ((Rij_x >= 0.0) ? 0.5 : -0.5)) * boxl;
-						Rij_y -= static_cast<int>(Rij_y * boxinv + ((Rij_y >= 0.0) ? 0.5 : -0.5)) * boxl;
-						//std::cout << Rij_x << '\t' << Rij_y << '\n';
-						double Rij_sq = Rij_x*Rij_x + Rij_y*Rij_y;
-						//std::cout << Rij_sq << '\t' << rcutsq << '\n';
-						if (Rij_sq < rcutsq) {	// within cutoff
-							double r = sqrt(Rij_sq);
-							r2 = 1 / Rij_sq;						//r^2, r^6, r^12
-							r6 = r2 * r2 * r2;
-							r12 = r6 * r6;
-							v_jakb = r12 - r6;
-							V += v_jakb + (12 * rc12 - 6 * rc6) * (r / rcut - 1);
-							f_jakb = (r12 + v_jakb) / Rij_sq;		//main term of the force routine, (2r^-12 - r^-6)/r^2
-							f_jakb -= (2 * rc12 - rc6) / (rcut * r);
-							fx_jakb = f_jakb * Rij_x;
-							fy_jakb = f_jakb * Rij_y;
-							fxi += fx_jakb;						//accumulate forces
-							fyi += fy_jakb;
-							Fx[j] -= fx_jakb;				//Newton's 3rd law, shown by r(2->1) = - r(1->2)
-							Fy[j] -= fy_jakb;
-							ncut += 1;
-							//std::cout << r2 << '\t' << r6 << '\t' << r12 << '\t' << V << '\n';
-							//std::cout << f_jakb << '\t' << fx_jakb << '\t' << fxi << '\t' << fyi << '\t' << ncut << '\n';
-							//std::cout << "calculated force\n";
-						}
-						Fx[i] = fxi;
-						Fy[i] = fyi;
-						j = list[j];
-					}
-				}	// end loop over neighboring cells
-				i = list[i];
-			}
-		}
-	}
-	//std::cout << "we in here end loop\n";
-	v_jakb = rc12 - rc6;
-	VC = V - (double(ncut) * v_jakb);
-	for (int i = 0; i < N*NA; i++) {				//Multiply results by energy factors
-		Fx[i] *= 24;
-		Fy[i] *= 24;
-	}
-	V *= 4.0;
-	VC *= 4.0;
-	for (int i = 0; i < N; i++) {
-		for (int a = 0; a < NA; a++) {
-			int mol_atom_index = int(3 * i + a % 3);
-			//std::cout << Fx[mol_atom_index] << '\t' << Fx[mol_atom_index] << '\n';
-			fx[i][a] = Fx[mol_atom_index];
-			fy[i][a] = Fy[mol_atom_index];
-		}
-	}
-	//std::cout << "exiting forces\n";
 }
 
 void velocityverlet(std::vector<double> &dsq) {								//advance position and velocity for all particles, includes RATTLE
@@ -799,6 +668,7 @@ void velocityverlet(std::vector<double> &dsq) {								//advance position and ve
 	}														//end loop over molecules for stage two
 	K *= 0.5;
 	timekeeping += dt;
+	//std::cout << timekeeping << '\t' << K << '\t' << V << '\t' << K + VC << '\n';
 }
 
 void run_for(int howlong, std::vector<double> &dsq_rattle) {
@@ -835,7 +705,6 @@ void cool_past(double &howcold, std::vector<double> &dsq_rattle) {	//lower the t
 
 void pack(double &newdensity, std::vector<double> &dsq_rattle) {	//increase density by reducing molecular separations and reducing the box volume
 	double new_boxl_sq = N / newdensity;
-	std::cout << "inside pack\n";
 	while (boxl*boxl > new_boxl_sq) { //Shrink (large steps), will overshoot target density by a little
 		for (int i = 0; i < N; i++) {
 			for (int a = 0; a < NA; a++) {
@@ -847,9 +716,8 @@ void pack(double &newdensity, std::vector<double> &dsq_rattle) {	//increase dens
 		boxinv = 1.0 / boxl;
 		boxl2 = boxl * 0.5;
 		rhoBar = N / (boxl * boxl);
-		velocityverlet_ts(50, dsq_rattle);
+		velocityverlet_ts(int(1 / dt), dsq_rattle);	//give the system a chance to relax before shrinking again
 	}
-	std::cout << "exited first loop\n";
 	while (boxl*boxl < new_boxl_sq) {	//overshot, so backtrack a little.
 		for (int i = 0; i < N; i++) {
 			for (int a = 0; a < NA; a++) {
@@ -861,9 +729,8 @@ void pack(double &newdensity, std::vector<double> &dsq_rattle) {	//increase dens
 		boxinv = 1.0 / boxl;
 		boxl2 = boxl * 0.5;
 		rhoBar = N / (boxl * boxl);
-		velocityverlet_ts(25, dsq_rattle);
+		velocityverlet_ts(int(1 / dt), dsq_rattle);
 	}
-	std::cout << "exited second loop\n";
 	while (boxl*boxl > new_boxl_sq) {
 		for (int i = 0; i < N; i++) {
 			for (int a = 0; a < NA; a++) {
@@ -875,6 +742,6 @@ void pack(double &newdensity, std::vector<double> &dsq_rattle) {	//increase dens
 		boxinv = 1.0 / boxl;
 		boxl2 = boxl * 0.5;
 		rhoBar = N / (boxl * boxl);
-		velocityverlet_ts(25, dsq_rattle);
+		velocityverlet_ts(int(1 / dt), dsq_rattle);
 	}
 }
