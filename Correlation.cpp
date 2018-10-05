@@ -8,7 +8,7 @@
 #include <iomanip> // std::setprecision
 #include <numeric> // std::accumulate
 #include <sys/stat.h> // mkdir
-#include "headers/Point.h" // Point class, some storage structs
+#include "headers/Point.h" // sPoint class, some storage structs
 #include "headers/ParameterClass.h" // InputParameter class reads my input files, SimulationParameters has a few extra that ReadConfig needs, that aren't part of input
 #include "headers/Numerical.h"
 
@@ -16,20 +16,20 @@
 //This program takes in a potentially gigantic trajectory from molecular dynamics (gigabytes) and calculates number of nearest neighbors and all the correlation functions
 //Meant to be called as a subprocess through a shell driver that also grabs task_id from the Sun Grid Engine. something like ./WriteTrajectoryToSTDOUT | xz > CompressTrajectory.xz, then unxz
 
-std::vector<std::vector<Point>> GetConfiguration(SimulationParameters &model);
-void WriteConfiguration(SimulationParameters &model, std::vector<std::vector<Point>> &PositionVector, std::ostream &strm);
+std::vector<std::vector<sPoint>> GetConfiguration(SimulationParameters &model);
+void WriteConfiguration(SimulationParameters &model, std::vector<std::vector<sPoint>> &PositionVector, std::ostream &strm);
 std::ifstream& GotoLine(std::ifstream& file, unsigned int num);
 InputParameter ReadInput(std::string &tag);
 SimulationParameters GetParams(InputParameter Input);
-void NearestNeighbors(SimulationParameters &model, std::vector<std::vector<Point>> &PositionVector, std::vector<int> &NeighborVector, double &NeighborCutOffSq, std::string tag);
+void NearestNeighbors(SimulationParameters &model, std::vector<std::vector<sPoint>> &PositionVector, std::vector<int> &NeighborVector, double &NeighborCutOffSq, std::string tag);
 std::vector<std::string> FoldersToFiles(SimulationParameters &model, std::vector<std::string> &stringvector, std::string tag);
 void FindRelaxationTime(SimulationParameters &model, std::string filename, std::vector<double> OrientCorrelation);
 double PairCorrelationFirstMin(SimulationParameters &model, HistogramInfo &hist, std::string tag);
 void PrintNeighbors(SimulationParameters &model, std::string filename, std::vector<int> &NumberNeighbors);
-void CalculateCorrelationFunctionsWindow(SimulationParameters &model, int &NumberOfTrajectories, int &t_cor, std::vector<std::vector<Point>> &OmegaJ, std::vector<std::vector<Point>> &Cm_J,
+void CalculateCorrelationFunctionsWindow(SimulationParameters &model, int &NumberOfTrajectories, int &t_cor, std::vector<std::vector<sPoint>> &OmegaJ, std::vector<std::vector<sPoint>> &Cm_J,
 	std::vector<double> &OrientCorrelation, std::vector<double> &MeanSqDisplacement);
-void CalculateCorrelationFunctionsOrderN(SimulationParameters &model, int &NumberOfTrajectories, int &t_cor, int &NumberOfCoarseSteps, std::vector<std::vector<Point>> &OmegaJ,
-	std::vector<std::vector<Point>> &Cm_J, std::vector<double> &OrientCorrelation, std::vector<double> &MeanSqDisplacement, std::vector<std::string> &OutputFiles, double &OrientationMagnitude, std::string tag);
+void CalculateCorrelationFunctionsOrderN(SimulationParameters &model, int &NumberOfTrajectories, int &t_cor, int &NumberOfCoarseSteps, std::vector<std::vector<sPoint>> &OmegaJ,
+	std::vector<std::vector<sPoint>> &Cm_J, std::vector<double> &OrientCorrelation, std::vector<double> &MeanSqDisplacement, std::vector<std::string> &OutputFiles, double &OrientationMagnitude, std::string tag);
 //this function needs to be refactored
 
 int main() {
@@ -39,14 +39,15 @@ int main() {
 	std::vector<std::string> OutputFolders = { "OrientCorrelation", "msd", "Diffusion", "Tau_orient", "Neighbors" };
 	std::vector<std::string> OutputFiles = FoldersToFiles(model, OutputFolders, tag);
 	HistogramInfo HistRDF(0.01, int(model.boxl / 2 / 0.01));
-	int t_cor = int(1000 / model.timestep / model.steps_between_cfgs); // correlation function is measured for this long (in units of model.timestep* #skipped configurations)
+	int t_cor = int(10000 / model.timestep / model.steps_between_cfgs); // correlation function is measured for this long (in units of model.timestep* #skipped configurations)
 	assert(model.num_cfgs >= t_cor); //make sure there at least as many configurations as correlation steps
-	std::vector<std::vector<Point>> OmegaJ(model.num_cfgs, std::vector<Point>(model.N)), Cm_J(model.num_cfgs, std::vector<Point>(model.N));
+	std::vector<std::vector<sPoint>> OmegaJ(model.num_cfgs, std::vector<sPoint>(model.N)), Cm_J(model.num_cfgs, std::vector<sPoint>(model.N));
 	double OrientationMagnitude = 0.0;
 	double NeighborCutOffSq = pow(PairCorrelationFirstMin(model, HistRDF, tag), 2);	// find the first minimum of g(r).
 	std::vector<int> NumberNeighbors(100);
 	for (int n = 0; n < model.num_cfgs; n++) {
-		std::vector<std::vector<Point>> Positions = GetConfiguration(model);
+		//if (n % 100 == 0) std::cout << n << '\n';
+		std::vector<std::vector<sPoint>> Positions = GetConfiguration(model);
 		if (n == 0) OrientationMagnitude = Positions[0][2].dist_sq(Positions[0][1]);	//grab orientation vector's magnitude, but only once.
 		for (int i = 0; i < model.N; i++) {	// Store orientations, center of mass of each molecule for every configuration to calculate C(t), MSD(t) respectively.
 			OmegaJ[n][i] = Positions[i][2] - Positions[i][1];
@@ -56,7 +57,8 @@ int main() {
 	}
 	PrintNeighbors(model, OutputFiles[4], NumberNeighbors);
 	int NumberOfTrajectories = model.num_cfgs - t_cor + 1; // every new configuration constitutes new initial conditions when calculating correlation functions.
-	int NumberOfCoarseSteps = 7900; // 1 * 2500 + 10 * 2500 + 25 * 2500 + 25 * 400 to get to the 10^5'th index = ~999.x tau = t_cor 
+	//int NumberOfCoarseSteps = 12390; // 2500(1 + 10 + 50 + 100) + 2390(250) to get to the 10^6'th index = ~9999.x tau = t_cor 
+	int NumberOfCoarseSteps = 6450; //2500(1 + 10) + 1450(50) to get to the 10^5th index
 	std::vector<double> OrientCorrelation(NumberOfCoarseSteps), MeanSqDisplacement(NumberOfCoarseSteps);
 	CalculateCorrelationFunctionsOrderN(model, NumberOfTrajectories, t_cor, NumberOfCoarseSteps, OmegaJ, Cm_J, OrientCorrelation, MeanSqDisplacement, OutputFiles, OrientationMagnitude, tag);
 	FindRelaxationTime(model, OutputFiles[3], OrientCorrelation);
@@ -66,20 +68,20 @@ int main() {
 	return 0;
 }
 
-std::vector<std::vector<Point>> GetConfiguration(SimulationParameters &model) {	// read in a configuration.
-	std::vector<std::vector<Point>> PositionVector(model.N, std::vector<Point>(model.NA));
+std::vector<std::vector<sPoint>> GetConfiguration(SimulationParameters &model) {	// read in a configuration.
+	std::vector<std::vector<sPoint>> PositionVector(model.N, std::vector<sPoint>(model.NA));
 	double f, g;
 	for (int i = 0; i < model.N; i++) {
 		for (int a = 0; a < model.NA; a++) {
 			std::cin >> f >> g;
-			Point temp(f, g);
+			sPoint temp(f, g);
 			PositionVector[i][a] = temp;
 		}
 	}
 	return PositionVector;
 }
 
-void WriteConfiguration(SimulationParameters &model, std::vector<std::vector<Point>> &PositionVector, std::ostream &strm) {	// write a configuration
+void WriteConfiguration(SimulationParameters &model, std::vector<std::vector<sPoint>> &PositionVector, std::ostream &strm) {	// write a configuration
 	for (int i = 0; i < model.N; i++) {
 		for (int a = 0; a < model.NA; a++) {
 			PositionVector[i][a].print(strm);
@@ -112,16 +114,16 @@ InputParameter ReadInput(std::string &tag) { // construct with all the input par
 }
 
 SimulationParameters GetParams(InputParameter Input) { //read in input file, assign all the parameters.
-	double density = Input.density, temperature = Input.temperature, ts = 0.001;
+	double density = Input.density, temperature = Input.temperature, ts = 0.001, steps_between_cfgs = 100;
 	int num_mol = Input.N, num_atom = 3, numcfg = Input.NumConfigs;
 	double boxl = sqrt(num_mol / density);
 	double boxinv = 1.0 / boxl;
-	SimulationParameters model(density, temperature, boxl, boxinv, ts, numcfg, num_mol, num_atom);
+	SimulationParameters model(density, temperature, boxl, boxinv, ts, numcfg, num_mol, num_atom, steps_between_cfgs);
 	return model;
 }
 
 double PairCorrelationFirstMin(SimulationParameters &model, HistogramInfo &hist, std::string tag) {	// defines nearest neighbor cutoff distance
-	std::ifstream rdfstream("PairCorrelation/" + tag + ".data");
+	std::ifstream rdfstream("PairCorrelation/Atom/" + tag + ".data");
 	std::string dummyLine;
 	getline(rdfstream, dummyLine);	// throw away header
 	double a, b;
@@ -130,7 +132,6 @@ double PairCorrelationFirstMin(SimulationParameters &model, HistogramInfo &hist,
 		data.push_back(b);	// grab elements of 2nd field, which is g(r).
 	}
 	if (data.size() < 100) {
-		std::cout << "Tag is " << tag << "g(r) vector was too short \n";
 		return 1.61;
 	}
 	for (int bin = 1; bin < hist.num_bins; bin++) {	// skip first bin to make range checking happy
@@ -147,14 +148,14 @@ double PairCorrelationFirstMin(SimulationParameters &model, HistogramInfo &hist,
 	return minimum;
 }
 
-void NearestNeighbors(SimulationParameters &model, std::vector<std::vector<Point>> &PositionVector, std::vector<int> &NeighborVector, double &NeighborCutOffSq, std::string tag) {
+void NearestNeighbors(SimulationParameters &model, std::vector<std::vector<sPoint>> &PositionVector, std::vector<int> &NeighborVector, double &NeighborCutOffSq, std::string tag) {
 	for (int j = 0; j < model.N; j++) {				// loop over all distinct molecule pairs j,k - could presumably do j,k with k > j but I'm not sure of a neat way to count neighbors without going over every index individually, can't double count like we do in g(r).
 		for (int a = 0; a < model.NA; a++) {
 			int counter = 0;					// reset counter when examining new reference particle
 			for (int k = 0; k < model.N; k++) {
 				if (j == k) continue;			// skip neighbor check if loop is over the same molecule twice <=> make sure molecules are distinct
 				for (int b = 0; b < model.NA; b++) {
-					Point r_jakb = (PositionVector[j][a] - PositionVector[k][b]);
+					sPoint r_jakb = (PositionVector[j][a] - PositionVector[k][b]);
 					r_jakb = r_jakb.pbc(model.boxl, model.invboxl);
 					if (r_jakb.dot(r_jakb) <= NeighborCutOffSq) {	// check if close enough to be a neighbor
 						counter += 1;
@@ -162,9 +163,13 @@ void NearestNeighbors(SimulationParameters &model, std::vector<std::vector<Point
 				}
 			}
 			//assert(counter <= 100);	//6 neighbors for molecules with non-overlapping disks. 
-			if (counter >= 25) std::cout << "counter was greater than 25, I am tag " << tag << " with cut off distance "
-				<< NeighborCutOffSq << " here are my model parameters: " << model.num_cfgs << '\t' << 
-				model.boxl << '\n';
+			if (counter >= 25) {
+				std::cout << "counter was greater than 25, I am tag " << tag << " with cut off distance "
+					<< NeighborCutOffSq << " here are my model parameters: " << model.num_cfgs << '\t' << model.N << '\t' <<
+					model.boxl << '\n';
+				std::cout << "I am (molecule,atom) " << j << "," << a << '\n';
+			}
+			assert(counter < 25);
 			assert(counter <= 600);
 			NeighborVector[counter] += 1; // If InRange, then register another near neighbor. 
 		}
@@ -202,11 +207,11 @@ void PrintNeighbors(SimulationParameters &model, std::string filename, std::vect
 	}
 }
 
-void CalculateCorrelationFunctionsOrderN(SimulationParameters &model, int &NumberOfTrajectories, int &t_cor, int &NumberOfCoarseSteps, std::vector<std::vector<Point>> &OmegaJ, 
-	std::vector<std::vector<Point>> &Cm_J, std::vector<double> &OrientCorrelation, std::vector<double> &MeanSqDisplacement, std::vector<std::string> &OutputFiles, double &OrientationMagnitude, std::string tag) {
-	//order-n method. Correlates from 0 to t_cor averaged over numberoftrajectories. Each time step is treated as a new origin. Coarser grained correlation functions every 2500 steps
+void CalculateCorrelationFunctionsOrderN(SimulationParameters &model, int &NumberOfTrajectories, int &t_cor, int &NumberOfCoarseSteps, std::vector<std::vector<sPoint>> &OmegaJ, 
+	std::vector<std::vector<sPoint>> &Cm_J, std::vector<double> &OrientCorrelation, std::vector<double> &MeanSqDisplacement, std::vector<std::string> &OutputFiles, double &OrientationMagnitude, std::string tag) {
+	//order-n method. Correlates from 0 to t_cor averaged over numberoftrajectories. Each time step is treated as a new origin. Coarser resolution correlation functions every 2500 steps
 	int blocksize = 2500; // number of words per block
-	std::vector<int> CoarseIndex = { 1, 10, 25, 25 };	// calculate correlation functions up to (a maximum of) 1*2500 + 10*2500 + 25*2500 + 25*2500 steps
+	std::vector<int> CoarseIndex = { 1, 10, 50, 100, 250 };	// calculate correlation functions up to (a maximum of) 2500*(1+10+50+100+250) steps
 	std::vector<int> CoarseOffset;	// offset needed to index the data since we're skipping around
 	for (std::vector<int>::size_type i = 0; i < CoarseIndex.size(); i++) {
 		if (i == 0) {
@@ -214,7 +219,7 @@ void CalculateCorrelationFunctionsOrderN(SimulationParameters &model, int &Numbe
 		}
 		else CoarseOffset.push_back(CoarseOffset[i - 1] + CoarseIndex[i - 1] * blocksize);
 	}
-	std::vector<std::vector<double>> Orient(4, std::vector<double>(blocksize)), MSD(4, std::vector<double>(blocksize));
+	std::vector<std::vector<double>> Orient(int(CoarseIndex.size()), std::vector<double>(blocksize)), MSD(int(CoarseIndex.size()), std::vector<double>(blocksize));
 	for (int j = 0; j < NumberOfTrajectories; j++) {
 		if (j % 1000 == 0) {
 			std::ofstream ofs("Track/" + tag + ".data");
@@ -226,7 +231,7 @@ void CalculateCorrelationFunctionsOrderN(SimulationParameters &model, int &Numbe
 				double total_omega = 0.0, total_cm = 0.0;
 				for (int i = 0; i < model.N; i++) {	//CoarseOffset[3] = 90,000. j = 190,000. k can be at most 399 since max index of OmegaJ is 289,999
 					total_omega += pow(OmegaJ[j][i].dot(OmegaJ[j + CoarseOffset[p] + (k*CoarseIndex[p])][i]), 2);
-					Point cm_temp = Cm_J[j][i] - Cm_J[j + CoarseOffset[p] + (k*CoarseIndex[p])][i];
+					sPoint cm_temp = Cm_J[j][i] - Cm_J[j + CoarseOffset[p] + (k*CoarseIndex[p])][i];
 					total_cm += pow(cm_temp.x(), 2) + pow(cm_temp.y(), 2);
 				}
 				Orient[p][k] += total_omega;
@@ -246,16 +251,17 @@ void CalculateCorrelationFunctionsOrderN(SimulationParameters &model, int &Numbe
 		OrientCorrelation[k] = 2.0 * OrientCorrelation[k] / pow(OrientationMagnitude, 2) / double(model.N) / NumberOfTrajectories - 1;	// divide here so I can use std::upper_bound later
 		MeanSqDisplacement[k] /= (double(model.N) * double(NumberOfTrajectories));
 		if (k < 2500) counter = k;
-		else if (k < 5000) counter = 1 * 2500 + 10 * (k % 2500);
-		else if (k < 7500) counter = 1 * 2500 + 10 * 2500 + 25 * (k % 2500);
-		else counter = 1 * 2500 + 10 * 2500 + 25 * 2500 + 25 * (k % 2500);
+		else if (k < 5000) counter = CoarseIndex[0] * blocksize + CoarseIndex[1] * (k % blocksize);	// counter makes linear the nonlinear way we count time.
+		else if (k < 7500) counter = (CoarseIndex[0] + CoarseIndex[1]) * blocksize + CoarseIndex[2] * (k % blocksize);
+		else if (k < 10000) counter = (CoarseIndex[0] + CoarseIndex[1] + CoarseIndex[2]) * blocksize + CoarseIndex[3] * (k % blocksize);
+		else counter = (CoarseIndex[0] + CoarseIndex[1] + CoarseIndex[2] + CoarseIndex[3]) * blocksize + CoarseIndex[4] * (k % blocksize);
 		double what_time = counter * model.timestep* model.steps_between_cfgs;
 		orientfile << what_time << '\t' << OrientCorrelation[k] << '\n';
-		msdfile << what_time << '\t' << std::setprecision(12) << MeanSqDisplacement[k] << '\n';	//numerical imprecision in numerical differentiation (subtraction of nearly equal values)
+		msdfile << what_time << '\t' << std::setprecision(12) << MeanSqDisplacement[k] << '\n';	//print more digits to help subtraction of nearly equal values
 	}
 }
 
-void CalculateCorrelationFunctionsWindow(SimulationParameters &model, int &NumberOfTrajectories, int &t_cor, std::vector<std::vector<Point>> &OmegaJ, std::vector<std::vector<Point>> &Cm_J,
+void CalculateCorrelationFunctionsWindow(SimulationParameters &model, int &NumberOfTrajectories, int &t_cor, std::vector<std::vector<sPoint>> &OmegaJ, std::vector<std::vector<sPoint>> &Cm_J,
 	std::vector<double> &OrientCorrelation, std::vector<double> &MeanSqDisplacement) {
 	//direct windowed method. Correlates from 0 to t_cor averaged over numberoftrajectories. Each time step is treated as a new origin
 	//currently defunct, don't use. Haven't added functionality to print OrientCorrelation, MeanSqDisplacement (but it's quite easy to figure out since step size is uniform)
@@ -268,7 +274,7 @@ void CalculateCorrelationFunctionsWindow(SimulationParameters &model, int &Numbe
 			double total_omega = 0.0, total_cm = 0.0;
 			for (int i = 0; i < model.N; i++) {
 				total_omega += pow(OmegaJ[j][i].dot(OmegaJ[j + k][i]), 2);
-				Point cm_temp = Cm_J[j][i] - Cm_J[j + k][i];
+				sPoint cm_temp = Cm_J[j][i] - Cm_J[j + k][i];
 				total_cm += pow(cm_temp.x(), 2) + pow(cm_temp.y(), 2);
 			}
 			OrientCorrelation[k] += total_omega;

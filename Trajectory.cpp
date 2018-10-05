@@ -23,7 +23,7 @@
 // 8/9/18 Just refactored the program - size cut from 1100 lines to 653. Introduced a few objects, halved the number of global variables. TODO: Decouple the functions, get rid of more global variables.
 //SHAKE, RATTLE have degenerate solutions for 180 degree bond angles, so linear molecules consisting of 3 or more atoms cannot be handled.
 
-const int n = 100;									//2n^2 atoms
+const int n = 30;									//2n^2 atoms
 const int N = 2 * n * n;							//# molecules in simulation
 const int NA = 3;									//# atoms per molecule
 const int NB = 3;									//# bonds per molecule
@@ -84,7 +84,7 @@ int main(int argc, char ** argv) {
 				}
 				velocityverlet_ts(skiptime, dsq);
 				PE += V;
-				if ((n+1) % 10000 == 0 && n != 0) {	// every 10000 configurations, print and clear the positions. Reduces vmem usage, prevents bad_alloc.
+				if ((n + 1) % 10000 == 0 && n != 0) {	// every 10000 configurations, print and clear the positions. Reduces vmem usage, prevents bad_alloc.
 					for (std::vector<int>::size_type i = 0; i < PositionX.size(); i++) {
 						std::cout << PositionX[i] << '\t' << PositionY[i] << '\n';
 					}
@@ -157,7 +157,7 @@ double AngVelocity() { //Calculate instantaneous angular velocity using the Iner
 void TargetTemperature(double &target, std::vector<double> &dsq_rattle) {	//hit target temperature with reasonable precision
 	double AverageTemperature;
 	std::vector<double> storetemperature;
-	for (int i = 0; i < 20000; i++){
+	for (int i = 0; i < 20000; i++) {
 		velocityverlet_ts(5, dsq_rattle);
 		storetemperature.push_back(2 * K / (3 * N));
 	}
@@ -170,7 +170,7 @@ void TargetTemperature(double &target, std::vector<double> &dsq_rattle) {	//hit 
 			a = (1 + a) / 2; //prevent overshooting by reducing the effect of chill()
 		}
 		chill(a, 20, dsq_rattle);
-		for (int i = 0; i < 20000; i++){
+		for (int i = 0; i < 20000; i++) {
 			velocityverlet_ts(4, dsq_rattle);
 			storetemperature.push_back(2 * K / (3 * N));
 		}
@@ -204,21 +204,21 @@ void AssignInitialConditions(InputParameter &Parameters, double hotter) {	//assi
 	boxl = sqrt(N / rhoBar);		//fix box lengths, periodic boundary conditions
 	boxinv = 1.0 / boxl;
 	boxl2 = boxl * 0.5;
-	InitialVelocities(Parameters.temperature + hotter); 
+	InitialVelocities(Parameters.temperature + hotter);
 }
 
 void InputGen() {		//create a bunch of input files in subdirectory "inputfiles", also mkdir all the directories of interest
 	//linecount -> bond angle -> density -> temperature -> #configurations -> N -> path/to/MeltedConfiguration
-	std::vector<int> BondAngle = {75};
+	std::vector<int> BondAngle = { 75, 60 };
 	std::vector<double>densityIn = { 0.25 }, temperatureIn = { 0.65, 0.6, 0.55, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2 };
-	std::vector<int>NumMolIn = {200, 1800, 20000};
+	std::vector<int>NumMolIn = { 200, 800, 1800 };
 	int NumConfigs = 3 * 100000;
 	mkdir("Trajectory", ACCESSPERMS);
 	mkdir("inputfiles", ACCESSPERMS);
 	std::ofstream inputstream("inputfiles/input.data");
-	int linenumber = 1;	
-	for (std::vector<int>::size_type h = 0; h < NumMolIn.size(); h++) {
-		for (std::vector<int>::size_type i = 0; i < BondAngle.size(); i++) {
+	int linenumber = 1;
+	for (std::vector<int>::size_type i = 0; i < BondAngle.size(); i++) {
+		for (std::vector<int>::size_type h = 0; h < NumMolIn.size(); h++) {
 			std::string angleout_filename = "Trajectory/" + std::to_string(BondAngle[i]) + "degrees";
 			mkdir(angleout_filename.c_str(), ACCESSPERMS);
 			for (std::vector<int>::size_type j = 0; j < densityIn.size(); j++) {
@@ -275,7 +275,7 @@ void PrintPositions(std::string filename, std::string YesOrNo) {	//Yes for minim
 				double ryia = ry[i][a];
 				rxia -= static_cast<int>(rxia * boxinv + ((rxia >= 0.0) ? 0.5 : -0.5)) * boxl;	//minimum image algorithm, "efficient coding of the minimum image convention" by U K Deiters
 				ryia -= static_cast<int>(ryia * boxinv + ((ryia >= 0.0) ? 0.5 : -0.5)) * boxl;
-				positionstream <<  std::setw(12) << rxia << '\t' << std::setw(12) << ryia << '\n';
+				positionstream << std::setw(12) << rxia << '\t' << std::setw(12) << ryia << '\n';
 			}
 		}
 	}
@@ -455,10 +455,6 @@ void computeForces() {	//uses neighbor list
 	for (auto &i : Ry) {	//apply periodic boundary conditions to the temporary positions
 		i -= static_cast<int>(i * boxinv + ((i >= 0.0) ? 0.5 : -0.5)) * boxl;
 	}
-	assert(!std::isnan(Rx[598]));
-	for (auto & i : Rx) {
-		assert(!std::isnan(i));
-	}
 	make_verlet_list(Rx, Ry, Rx_save, Ry_save, firstcall, list, seek);
 	for (int i = 0; i < N; i++) {
 		for (int a = 0; a < NA; a++) {
@@ -479,7 +475,7 @@ void computeForces() {	//uses neighbor list
 			if (flattened_index % 3 == 0) offset = 2;		// skip over 2 intramolecular atoms (all intramolecular atoms down the neighbor list)
 			else if (flattened_index % 3 == 1) offset = 1;	// skip over 1 intramolecular atom	(all intramolecular atoms down the neighbor list)
 			else if (flattened_index % 3 == 2) offset = 0;	// no intramolecular atoms to skip
-			else assert(true);
+			else assert(false);
 			for (int p = seek[flattened_index] + offset; p < seek[flattened_index + 1]; p++) {	//seek holds address of index in list
 				int k = list[p];	//list holds atomic indices
 				int atom_index = k % 3;
@@ -660,7 +656,7 @@ void velocityverlet(std::vector<double> &dsq) {								//advance position and ve
 		}													//end of iterative loop
 		assert(done);
 		for (int a = 0; a < NA; a++) {
-			vx[i][a] = vxi[a];						
+			vx[i][a] = vxi[a];
 			vy[i][a] = vyi[a];
 			K += m[a] * (vxi[a] * vxi[a] + vyi[a] * vyi[a]); //only use if m[a] is not identical for all sites
 															 //K += (vxi[a] * vxi[a] + vyi[a] + vyi[a]);
