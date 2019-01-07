@@ -23,7 +23,7 @@
 // 8/9/18 Just refactored the program - size cut from 1100 lines to 653. Introduced a few objects, halved the number of global variables. TODO: Decouple the functions, get rid of more global variables.
 //SHAKE, RATTLE have degenerate solutions for 180 degree bond angles, so linear molecules consisting of 3 or more atoms cannot be handled.
 
-const int n = 30;									//2n^2 atoms
+const int n = 10;									//2n^2 atoms
 const int N = 2 * n * n;							//# molecules in simulation
 const int NA = 3;									//# atoms per molecule
 const int NB = 3;									//# bonds per molecule
@@ -70,8 +70,8 @@ int main(int argc, char ** argv) {
 			AssignInitialConditions(parameter, 0.5);	// start hotter than intended - allow minor annealing
 			TargetTemperature(parameter.temperature, dsq);	// cool to desired temperature
 			int NumConfigs = parameter.NumConfigs;	//#of saved configurations. # configurations * skiptime + waiting time = total run length.
-			int skiptime = 100;	//skip this many time steps between configurations
-			run_for(3000, dsq);	//pass most relaxation times
+			int skiptime = 1000;	//skip this many time steps between configurations
+			run_for(300, dsq);	//pass most relaxation times
 			std::vector<double> PositionX, PositionY;
 			double PE = 0.0;
 			//std::ofstream ofs("CheckEnergy.data");
@@ -209,10 +209,10 @@ void AssignInitialConditions(InputParameter &Parameters, double hotter) {	//assi
 
 void InputGen() {		//create a bunch of input files in subdirectory "inputfiles", also mkdir all the directories of interest
 	//linecount -> bond angle -> density -> temperature -> #configurations -> N -> path/to/MeltedConfiguration
-	std::vector<int> BondAngle = { 75, 60 };
+	std::vector<int> BondAngle = {75};
 	std::vector<double>densityIn = { 0.25 }, temperatureIn = { 0.65, 0.6, 0.55, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2 };
-	std::vector<int>NumMolIn = { 200, 800, 1800 };
-	int NumConfigs = 3 * 100000;
+	std::vector<int>NumMolIn = { 200, 800, 1800, 50 };
+	int NumConfigs = 3 * 10000;
 	mkdir("Trajectory", ACCESSPERMS);
 	mkdir("inputfiles", ACCESSPERMS);
 	std::ofstream inputstream("inputfiles/input.data");
