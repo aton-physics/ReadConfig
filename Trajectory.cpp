@@ -23,7 +23,7 @@
 // 8/9/18 Just refactored the program - size cut from 1100 lines to 653. Introduced a few objects, halved the number of global variables. TODO: Decouple the functions, get rid of more global variables.
 //SHAKE, RATTLE have degenerate solutions for 180 degree bond angles, so linear molecules consisting of 3 or more atoms cannot be handled.
 
-const int n = 10;									//2n^2 atoms
+const int n = 30;									//2n^2 atoms. Note that this parameter must be changed whenever I change N. (global variables bad, but ain't broke yet)
 const int N = 2 * n * n;							//# molecules in simulation
 const int NA = 3;									//# atoms per molecule
 const int NB = 3;									//# bonds per molecule

@@ -44,7 +44,7 @@ int main() {
 	std::vector<std::vector<Point>> OmegaJ(model.num_cfgs, std::vector<Point>(model.N)), Cm_J(model.num_cfgs, std::vector<Point>(model.N));
 	double OrientationMagnitude = 0.0;
 	for (int n = 0; n < model.num_cfgs; n++) {
-		//if (n % 100 == 0) std::cout << n << '\n';
+		//if (n % 1000 == 0) std::cout << n << '\n';
 		std::vector<std::vector<Point>> Positions = GetConfiguration(model);
 		if (n == 0) OrientationMagnitude = Positions[0][2].dist_sq(Positions[0][1]);	//grab orientation vector's magnitude, but only once.
 		for (int i = 0; i < model.N; i++) {	// Store orientations, center of mass of each molecule for every configuration to calculate C(t), MSD(t) respectively.
@@ -101,6 +101,7 @@ InputParameter ReadInput(std::string &tag) { // construct with all the input par
 	taskID_string = getenv("SGE_TASK_ID");
 	std::string task_id = taskID_string;
 	tag = task_id;
+	//tag = "1";
 	std::ifstream myfile("inputfiles/input.data"); // read parameters from this file
 												   //tag = "1";
 	GotoLine(myfile, std::stoi(tag));	//skip to tagged line
@@ -163,21 +164,21 @@ void CalculateCorrelationFunctionsOrderN(SimulationParameters &model, int &Numbe
 	std::vector<std::vector<double>> Orient6(int(CoarseIndex.size()), std::vector<double>(blocksize)),
 		CollectiveOrient6(int(CoarseIndex.size()), std::vector<double>(blocksize)), 
 		Scattering(int(CoarseIndex.size()), std::vector<double>(blocksize));
-	int NumScatteringVectors = 200;
+	int NumScatteringVectors = 20;
 	double ScatteringMagnitude = 3.5;
 	std::default_random_engine generator;
 	std::uniform_real_distribution<double> RealDist(-3.5, 3.5);
 	double qx, qy;
 	for (int j = 0; j < NumberOfTrajectories; j++) {
-		/*if (j % 1000 == 0) {
-			std::ofstream ofs("Track/" + tag + ".data");
-			ofs << "Trajectory number " << j << '\n';
+		/*if (j % 1 == 0) {
+			//std::ofstream ofs("Track/" + tag + ".data");
+			//ofs << "Trajectory number " << j << '\n';
+			std::cout << "Trajectory number " << j << '\n';
 		}*/
 		for (std::vector<int>::size_type p = 0; p < CoarseIndex.size(); p++) {
 			for (int k = 0; k < blocksize; k++) {
 				if (CoarseOffset[p] + (k*CoarseIndex[p]) >= t_cor) continue;	// t_cor is a hard limit to how far I want to calculate my correlation functions
 				double total_omega2 = 0.0, total_omega6 = 0.0, total_collective_omega6 = 0.0, total_scattering = 0.0, total_cm = 0.0;
-				
 				for (int i = 0; i < model.N; i++) {	//CoarseOffset[3] = 90,000. j = 190,000. k can be at most 399 since max index of OmegaJ is 289,999
 					total_omega6 += Cos1ToCos6(OmegaJ[j][i].dot(OmegaJ[j + CoarseOffset[p] + (k*CoarseIndex[p])][i]));
 					total_omega2 += pow(OmegaJ[j][i].dot(OmegaJ[j + CoarseOffset[p] + (k*CoarseIndex[p])][i]), 2);
@@ -186,7 +187,7 @@ void CalculateCorrelationFunctionsOrderN(SimulationParameters &model, int &Numbe
 					for (int m = 0; m < NumScatteringVectors; m++) {		
 						qx = RealDist(generator);
 						qy = (2 * (i % 2) - 1) * sqrt(ScatteringMagnitude*ScatteringMagnitude - qx*qx);	//select qy based on magnitude of qx, and assign qy positive or negative values depending on the loop variable
-						total_scattering += cos(qx*cm_temp.x() + qy*cm_temp.y());	// dot product of q and cm(t) - cm(0)
+						total_scattering += cos(qx*cm_temp.x() - qy*cm_temp.y());	// dot product of q and cm(t) - cm(0)
 					}
 					total_scattering /= NumScatteringVectors;
 				}
@@ -213,9 +214,9 @@ void CalculateCorrelationFunctionsOrderN(SimulationParameters &model, int &Numbe
 	}
 	std::ofstream orientfile(OutputFiles[0], std::ios_base::app);
 	std::ofstream msdfile(OutputFiles[1], std::ios_base::app);
-	std::ofstream orient6file(OutputFiles[5], std::ios_base::app);
-	std::ofstream collectiveorient6file(OutputFiles[6], std::ios_base::app);
-	std::ofstream scatteringfile(OutputFiles[7], std::ios_base::app);
+	std::ofstream orient6file(OutputFiles[4], std::ios_base::app);
+	std::ofstream collectiveorient6file(OutputFiles[5], std::ios_base::app);
+	std::ofstream scatteringfile(OutputFiles[6], std::ios_base::app);
 	for (int k = 0; k < NumberOfCoarseSteps; k++) {
 		double counter = 0;
 		CollectiveOrient6Correlation[k] /= pow(double(model.N),2) / NumberOfTrajectories;
