@@ -31,7 +31,7 @@ void CalculateCorrelationFunctionsWindow(SimulationParameters &model, int &Numbe
 	std::vector<double> &OrientCorrelation, std::vector<double> &MeanSqDisplacement);
 void CalculateCorrelationFunctionsOrderN(SimulationParameters &model, int &NumberOfTrajectories, int &t_cor, int &NumberOfCoarseSteps, std::vector<std::vector<Point>> &OmegaJ,
 	std::vector<std::vector<Point>> &Cm_J, std::vector<double> &OrientCorrelation, std::vector<double> &Orient6Correlation, std::vector<double> &CollectiveOrient6Correlation,
-	std::vector<double> &MeanSqDisplacement, std::vector<double> &ScatteringFunction, std::vector<std::string> &OutputFiles, double &OrientationMagnitude, std::string tag);
+	std::vector<double> &MeanSqDisplacement, std::vector<double> &ScatteringFunction, std::vector<std::string> &OutputFiles, std::string tag);
 
 int main() {
 	std::string tag = "FailedtoAssignTag";
@@ -46,9 +46,9 @@ int main() {
 	for (int n = 0; n < model.num_cfgs; n++) {
 		//if (n % 1000 == 0) std::cout << n << '\n';
 		std::vector<std::vector<Point>> Positions = GetConfiguration(model);
-		if (n == 0) OrientationMagnitude = Positions[0][2].dist_sq(Positions[0][1]);	//grab orientation vector's magnitude, but only once.
-		for (int i = 0; i < model.N; i++) {	// Store orientations, center of mass of each molecule for every configuration to calculate C(t), MSD(t) respectively.
-			OmegaJ[n][i] = Positions[i][2] - Positions[i][1];
+		if (n == 0) OrientationMagnitude = sqrt(Positions[0][2].dist_sq(Positions[0][1]));	//grab orientation vector's magnitude, but only once.
+		for (int i = 0; i < model.N; i++) {	// Store orientations, center of mass of each molecule for every configuration to calculate dynamical correlation functions.
+			OmegaJ[n][i] = (Positions[i][2] - Positions[i][1]) / OrientationMagnitude;
 			Cm_J[n][i] = (Positions[i][2] + Positions[i][1] + Positions[i][0]) / 3.0;
 		}
 	}
@@ -60,7 +60,7 @@ int main() {
 		CollectiveOrient6Correlation(NumberOfCoarseSteps), MeanSqDisplacement(NumberOfCoarseSteps), ScatteringFunction(NumberOfCoarseSteps);
 	CalculateCorrelationFunctionsOrderN(model, NumberOfTrajectories, t_cor, NumberOfCoarseSteps, OmegaJ, Cm_J, 
 		OrientCorrelation, Orient6Correlation, CollectiveOrient6Correlation, MeanSqDisplacement, ScatteringFunction,
-		OutputFiles, OrientationMagnitude, tag);
+		OutputFiles, tag);
 	FindRelaxationTime(model, OutputFiles[3], OrientCorrelation);
 	numerical_differentiation(OutputFiles[1], "derivative", model.steps_between_cfgs*model.timestep, tag); // derivative/derivative is a temporary solution to see how long I should wait before taking the zero slope regression line
 	zero_slope_regression("derivative", OutputFiles[2], model.temperature, 1000.0, tag);	// skip 10 tau before taking the regression
@@ -101,9 +101,8 @@ InputParameter ReadInput(std::string &tag) { // construct with all the input par
 	taskID_string = getenv("SGE_TASK_ID");
 	std::string task_id = taskID_string;
 	tag = task_id;
-	//tag = "1";
 	std::ifstream myfile("inputfiles/input.data"); // read parameters from this file
-												   //tag = "1";
+	//tag = "1";
 	GotoLine(myfile, std::stoi(tag));	//skip to tagged line
 	int linenum, numcfg, NumMol;
 	double bondangle, density, temperature;
@@ -115,7 +114,7 @@ InputParameter ReadInput(std::string &tag) { // construct with all the input par
 
 SimulationParameters GetParams(InputParameter Input) { //read in input file, assign all the parameters.
 	double density = Input.density, temperature = Input.temperature, ts = 0.001;
-	int num_mol = Input.N, num_atom = 3, numcfg = Input.NumConfigs, steps_between_cfgs = 1000;	//IMPORTANT: make sure this matches with any other programs you use. I should really put this in a header.
+	int num_mol = Input.N, num_atom = 3, numcfg = Input.NumConfigs, steps_between_cfgs = 10000;	//IMPORTANT: make sure this matches with any other programs you use. I should really put this in a header.
 	double boxl = sqrt(num_mol / density);
 	double boxinv = 1.0 / boxl;
 	SimulationParameters model(density, temperature, boxl, boxinv, ts, numcfg, num_mol, num_atom, steps_between_cfgs);
@@ -148,7 +147,7 @@ void FindRelaxationTime(SimulationParameters &model, std::string filename, std::
 
 void CalculateCorrelationFunctionsOrderN(SimulationParameters &model, int &NumberOfTrajectories, int &t_cor, int &NumberOfCoarseSteps, std::vector<std::vector<Point>> &OmegaJ,
 	std::vector<std::vector<Point>> &Cm_J, std::vector<double> &OrientCorrelation, std::vector<double> &Orient6Correlation, std::vector<double> &CollectiveOrient6Correlation,
-	std::vector<double> &MeanSqDisplacement, std::vector<double> &ScatteringFunction, std::vector<std::string> &OutputFiles, double &OrientationMagnitude, std::string tag) {
+	std::vector<double> &MeanSqDisplacement, std::vector<double> &ScatteringFunction, std::vector<std::string> &OutputFiles, std::string tag) {
 	//order-n method. Correlates from 0 to t_cor averaged over numberoftrajectories. Each time step is treated as a new origin. Coarser resolution correlation functions every 2500 steps
 	int blocksize = 2500; // number of words per block
 	std::vector<int> CoarseIndex = { 1, 10, 50, 100, 250 };	// calculate correlation functions up to (a maximum of) 2500*(1+10+50+100+250) steps
@@ -164,17 +163,16 @@ void CalculateCorrelationFunctionsOrderN(SimulationParameters &model, int &Numbe
 	std::vector<std::vector<double>> Orient6(int(CoarseIndex.size()), std::vector<double>(blocksize)),
 		CollectiveOrient6(int(CoarseIndex.size()), std::vector<double>(blocksize)), 
 		Scattering(int(CoarseIndex.size()), std::vector<double>(blocksize));
-	int NumScatteringVectors = 20;
+	int NumScatteringVectors = 10;
 	double ScatteringMagnitude = 3.5;
 	std::default_random_engine generator;
 	std::uniform_real_distribution<double> RealDist(-3.5, 3.5);
-	double qx, qy;
+	double qx[NumScatteringVectors], qy[NumScatteringVectors];
+	for (int m = 0; m < NumScatteringVectors; m++) {
+		qx[m] = RealDist(generator);
+		qy[m] = (2 * (m % 2) - 1) * sqrt(ScatteringMagnitude*ScatteringMagnitude - qx[m]*qx[m]); //select qy based on magnitude of qx, and assign qy positive or negative values depending on the loop variable
+	}
 	for (int j = 0; j < NumberOfTrajectories; j++) {
-		/*if (j % 1 == 0) {
-			//std::ofstream ofs("Track/" + tag + ".data");
-			//ofs << "Trajectory number " << j << '\n';
-			std::cout << "Trajectory number " << j << '\n';
-		}*/
 		for (std::vector<int>::size_type p = 0; p < CoarseIndex.size(); p++) {
 			for (int k = 0; k < blocksize; k++) {
 				if (CoarseOffset[p] + (k*CoarseIndex[p]) >= t_cor) continue;	// t_cor is a hard limit to how far I want to calculate my correlation functions
@@ -185,11 +183,8 @@ void CalculateCorrelationFunctionsOrderN(SimulationParameters &model, int &Numbe
 					Point cm_temp = Cm_J[j][i] - Cm_J[j + CoarseOffset[p] + (k*CoarseIndex[p])][i];
 					total_cm += pow(cm_temp.x(), 2) + pow(cm_temp.y(), 2);
 					for (int m = 0; m < NumScatteringVectors; m++) {		
-						qx = RealDist(generator);
-						qy = (2 * (i % 2) - 1) * sqrt(ScatteringMagnitude*ScatteringMagnitude - qx*qx);	//select qy based on magnitude of qx, and assign qy positive or negative values depending on the loop variable
-						total_scattering += cos(qx*cm_temp.x() - qy*cm_temp.y());	// dot product of q and cm(t) - cm(0)
+						total_scattering += cos(qx[m]*cm_temp.x() - qy[m]*cm_temp.y());	// dot product of q and cm(t) - cm(0)
 					}
-					total_scattering /= NumScatteringVectors;
 				}
 				for (int i = 0; i < model.N; i++) {	//higher order correlation - 2-time, 2-particle
 					for (int q = 0; q < model.N; q++) {
@@ -219,11 +214,11 @@ void CalculateCorrelationFunctionsOrderN(SimulationParameters &model, int &Numbe
 	std::ofstream scatteringfile(OutputFiles[6], std::ios_base::app);
 	for (int k = 0; k < NumberOfCoarseSteps; k++) {
 		double counter = 0;
-		CollectiveOrient6Correlation[k] /= pow(double(model.N),2) / NumberOfTrajectories;
-		Orient6Correlation[k] /= double(model.N) / NumberOfTrajectories;
-		OrientCorrelation[k] = 2.0 * OrientCorrelation[k] / pow(OrientationMagnitude, 2) / double(model.N) / NumberOfTrajectories - 1;	// divide here so I can use std::upper_bound later
+		CollectiveOrient6Correlation[k] /= (pow(double(model.N),2) * NumberOfTrajectories);
+		Orient6Correlation[k] /= (double(model.N)* NumberOfTrajectories);
+		OrientCorrelation[k] = 2.0 * OrientCorrelation[k] / double(model.N) / NumberOfTrajectories - 1;	// divide here so I can use std::upper_bound later
 		MeanSqDisplacement[k] /= (double(model.N) * double(NumberOfTrajectories));
-		ScatteringFunction[k] /= (double(model.N) * double(NumberOfTrajectories));
+		ScatteringFunction[k] /= (double(model.N) * double(NumberOfTrajectories) * NumScatteringVectors);
 		if (k < 2500) counter = k;
 		else if (k < 5000) counter = CoarseIndex[0] * blocksize + CoarseIndex[1] * (k % blocksize);	// counter is a linear way to index the nonlinear way we are tracking time.
 		else if (k < 7500) counter = (CoarseIndex[0] + CoarseIndex[1]) * blocksize + CoarseIndex[2] * (k % blocksize);
