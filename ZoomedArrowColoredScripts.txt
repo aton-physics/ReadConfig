@@ -1,0 +1,179 @@
+reset
+set terminal pdfcairo enhanced color dashed font "Courier New, 10" \
+rounded size 9.6 cm, 9.6 cm
+set encoding utf8
+set style arrow 4 head filled size screen 0.03,15 ls 2
+unset xlabel
+unset ylabel
+set label 1 'Liquid (k_BT/ε = 0.65)' at screen 0.1,0.1 
+set output "Zoom21.pdf"
+set multiplot
+f(x,y)= ((x/y)**0.5)/2	#half box length, x = N, y = density
+set xrange [-f(1800,0.25)+2:f(1800,0.25)-2]
+set yrange [-f(1800,0.25)+2:f(1800,0.25)-2]
+set size ratio -1
+unset xtics 
+unset ytics 
+unset colorbox
+unset key
+set palette defined ( 0 "red", 1 "blue", 2 "black", 3 "red", 4 "blue", 5 "black") 
+unset title
+set size 0.6,0.6 
+set origin 0.001,0.2
+#change these
+xlow = 18
+xhigh = 32
+ylow = 18
+yhigh = 32
+xlow2 = 5.1
+xhigh2 = 20.1
+ylow2 = -27.5
+yhigh2 = -12.5
+#change those
+set arrow 1 from xhigh,yhigh to screen 0.55, 0.9 nohead lw 2
+set arrow 2 from xhigh,ylow to screen 0.55, 0.55 nohead lw 2
+set arrow 11 from xhigh2,yhigh2 to screen 0.55, 0.51 nohead lw 2
+set arrow 12 from xhigh2,ylow2 to screen 0.55, 0.03 nohead lw 2
+set arrow 3 from xlow,ylow to xlow,yhigh nohead lw 2
+set arrow 4 from xlow,ylow to xhigh,ylow nohead lw 2
+set arrow 5 from xhigh,ylow to xhigh, yhigh nohead lw 2
+set arrow 6 from xhigh,yhigh to xlow,yhigh nohead lw 2
+set arrow 13 from xlow2,ylow2 to xlow2,yhigh2 nohead lw 2
+set arrow 14 from xlow2,ylow2 to xhigh2,ylow2 nohead lw 2
+set arrow 15 from xhigh2,ylow2 to xhigh2, yhigh2 nohead lw 2
+set arrow 16 from xhigh2,yhigh2 to xlow2,yhigh2 nohead lw 2
+plot "21.data" u 2:1:4:3:5 w vectors head size screen 0.08,1 filled lw 1 lc palette noti
+unset arrow 
+set xrange [xlow:xhigh]
+set yrange [ylow:yhigh]
+set size 0.48,0.48
+set origin 0.55, 0.47
+plot "21.data" u 2:1:4:3:5 w vectors head size screen 0.16,1 filled lw 3 lc palette noti
+set size 0.48,0.48
+set origin 0.55, 0.03
+set xrange [xlow2:xhigh2]
+set yrange [ylow2:yhigh2]
+plot "21.data" u 2:1:4:3:5 w vectors head size screen 0.16,1 filled lw 3 lc palette noti
+unset multiplot
+unset output
+
+___
+reset
+set terminal pdfcairo enhanced color dashed font "Courier New, 10" \
+rounded size 9.6 cm, 9.6 cm
+set encoding utf8
+set style arrow 4 head filled size screen 0.03,15 ls 2
+unset xlabel
+unset ylabel
+set label 1 "Supercooled Liquid, \nBody Orientational Hexatic \n(k_BT/ε = 0.35)" at screen 0.1, screen 0.15 
+set output "Zoom27.pdf"
+set multiplot
+f(x,y)= ((x/y)**0.5)/2	#half box length, x = N, y = density
+set xrange [-f(1800,0.25)+2:f(1800,0.25)-2]
+set yrange [-f(1800,0.25)+2:f(1800,0.25)-2]
+set size ratio -1
+unset xtics 
+unset ytics 
+unset colorbox
+unset key
+set palette defined ( 0 "red", 1 "blue", 2 "black", 3 "red", 4 "blue", 5 "black") 
+unset title
+set size 0.6,0.6 
+set origin 0.001,0.2
+#change these
+xlow = 3.1
+xhigh = 18.1
+ylow = -13.1
+yhigh = 2.1
+xlow2 = 20.2
+xhigh2 = 35.2
+ylow2 = -33.5
+yhigh2 = -18.5
+#change those
+set arrow 1 from xhigh,yhigh to screen 0.55, 0.9 nohead lw 2
+set arrow 2 from xhigh,ylow to screen 0.55, 0.55 nohead lw 2
+set arrow 11 from xhigh2,yhigh2 to screen 0.55, 0.51 nohead lw 2
+set arrow 12 from xhigh2,ylow2 to screen 0.55, 0.03 nohead lw 2
+set arrow 3 from xlow,ylow to xlow,yhigh nohead lw 2
+set arrow 4 from xlow,ylow to xhigh,ylow nohead lw 2
+set arrow 5 from xhigh,ylow to xhigh, yhigh nohead lw 2
+set arrow 6 from xhigh,yhigh to xlow,yhigh nohead lw 2
+set arrow 13 from xlow2,ylow2 to xlow2,yhigh2 nohead lw 2
+set arrow 14 from xlow2,ylow2 to xhigh2,ylow2 nohead lw 2
+set arrow 15 from xhigh2,ylow2 to xhigh2, yhigh2 nohead lw 2
+set arrow 16 from xhigh2,yhigh2 to xlow2,yhigh2 nohead lw 2
+plot "27.data" u 2:1:4:3:5 w vectors head size screen 0.08,1 filled lw 1 lc palette noti
+unset arrow 
+set xrange [xlow:xhigh]
+set yrange [ylow:yhigh]
+set size 0.48,0.48
+set origin 0.55, 0.47
+plot "27.data" u 2:1:4:3:5 w vectors head size screen 0.16,1 filled lw 3 lc palette noti
+set size 0.48,0.48
+set origin 0.55, 0.03
+set xrange [xlow2:xhigh2]
+set yrange [ylow2:yhigh2]
+plot "27.data" u 2:1:4:3:5 w vectors head size screen 0.16,1 filled lw 3 lc palette noti
+unset multiplot
+unset output
+
+_____
+reset
+set terminal pdfcairo enhanced color dashed font "Courier New, 10" \
+rounded size 9.6 cm, 9.6 cm
+set encoding utf8
+set style arrow 4 head filled size screen 0.03,15 ls 2
+unset xlabel
+unset ylabel
+set label 1 "Glass (k_BT/ε = 0.2)" at screen 0.1,0.1 
+set output "Zoom30.pdf"
+set multiplot
+f(x,y)= ((x/y)**0.5)/2	#half box length, x = N, y = density
+set xrange [-f(1800,0.25)+2:f(1800,0.25)-2]
+set yrange [-f(1800,0.25)+2:f(1800,0.25)-2]
+set size ratio -1
+unset xtics 
+unset ytics 
+unset colorbox
+unset key
+set palette defined ( 0 "red", 1 "blue", 2 "black", 3 "red", 4 "blue", 5 "black") 
+unset title
+set size 0.6,0.6 
+set origin 0.001,0.2
+#change these
+xlow = 7.9
+xhigh = 22.9
+ylow = -13
+yhigh = 2
+xlow2 = -30
+xhigh2 = -15
+ylow2 = -39.5
+yhigh2 = -24.5
+#change those
+set arrow 1 from xhigh,yhigh to screen 0.55, 0.9 nohead lw 2
+set arrow 2 from xhigh,ylow to screen 0.55, 0.55 nohead lw 2
+set arrow 11 from xhigh2,yhigh2 to screen 0.55, 0.51 nohead lw 2
+set arrow 12 from xhigh2,ylow2 to screen 0.55, 0.03 nohead lw 2
+set arrow 3 from xlow,ylow to xlow,yhigh nohead lw 2
+set arrow 4 from xlow,ylow to xhigh,ylow nohead lw 2
+set arrow 5 from xhigh,ylow to xhigh, yhigh nohead lw 2
+set arrow 6 from xhigh,yhigh to xlow,yhigh nohead lw 2
+set arrow 13 from xlow2,ylow2 to xlow2,yhigh2 nohead lw 2
+set arrow 14 from xlow2,ylow2 to xhigh2,ylow2 nohead lw 2
+set arrow 15 from xhigh2,ylow2 to xhigh2, yhigh2 nohead lw 2
+set arrow 16 from xhigh2,yhigh2 to xlow2,yhigh2 nohead lw 2
+plot "30.data" u 2:1:4:3:5 w vectors head size screen 0.08,1 filled lw 1 lc palette noti
+unset arrow 
+set xrange [xlow:xhigh]
+set yrange [ylow:yhigh]
+set size 0.48,0.48
+set origin 0.55, 0.47
+plot "30.data" u 2:1:4:3:5 w vectors head size screen 0.16,1 filled lw 3 lc palette noti
+set size 0.48,0.48
+set origin 0.55, 0.03
+set xrange [xlow2:xhigh2]
+set yrange [ylow2:yhigh2]
+plot "30.data" u 2:1:4:3:5 w vectors head size screen 0.16,1 filled lw 3 lc palette noti
+unset multiplot
+unset output
+
